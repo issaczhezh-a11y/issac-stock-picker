@@ -129,7 +129,7 @@ if st.button(t["scan_btn"]):
     st.session_state.scan_results = results
     st.session_state.update_time = datetime.now(pytz.timezone('America/Toronto')).strftime("%Y-%m-%d %H:%M:%S")
 
-# --- 5. 展示逻辑 ---
+# --- 5. 展示逻辑 (Issac Pro 终极深度双语分析版) ---
 if st.session_state.get('scan_results'):
     df = pd.DataFrame(st.session_state.scan_results)
     if not df.empty:
@@ -140,25 +140,59 @@ if st.session_state.get('scan_results'):
         match_df = df[df[t["col_result"]].str.contains("符合|Match")]
         display_df = match_df if show_only else df
         
-        # --- AI 分析 (新增成交量逻辑) ---
+        # --- 🤖 Issac AI Pro 深度研判系统 ---
         if not match_df.empty:
-            st.subheader(f"🤖 Issac AI {'Analysis' if lang_choice=='EN' else '深度分析'}")
-            selected_stock = st.selectbox(f"🎯 {'Analyze:' if lang_choice=='EN' else '分析个股：'}", match_df[t["col_code"]].tolist())
+            st.subheader(f"🤖 Issac AI {'Stock Intelligence' if lang_choice=='EN' else '深度投资研判'}")
+            selected_stock = st.selectbox(f"🎯 {'Select Target:' if lang_choice=='EN' else '选择个股进行全维度分析：'}", match_df[t["col_code"]].tolist())
             
             if selected_stock:
                 s = match_df[match_df[t["col_code"]] == selected_stock].iloc[0]
-                with st.expander(f"🔍 {selected_stock} - {'Report' if lang_choice=='EN' else '投资报告'}", expanded=True):
-                    # 财务
-                    st.write(f"🏛️ **{'Fundamental' if lang_choice=='EN' else '基本面'}:** PEG {s[t['col_peg']]}, ROE {s[t['col_roe']]}%. {'Value play.' if lang_choice=='EN' else '典型的价值成长组合。'}")
-                    # 成交量 AI 研判
-                    v_ratio = s['vol_num']
-                    v_msg = ""
-                    if v_ratio > 100: v_msg = f"🚀 **{'Huge Volume' if lang_choice=='EN' else '巨量突破'}:** {'Volume is 2x+ average! Strong institutional interest.' if lang_choice=='EN' else '成交量翻倍！极大概率有大资金进场。'}"
-                    elif v_ratio > 30: v_msg = f"📈 **{'Increasing Volume' if lang_choice=='EN' else '温和放量'}:** {'Buying pressure is building up.' if lang_choice=='EN' else '买盘活跃度正在提升。'}"
-                    elif v_ratio < -30: v_msg = f"💤 **{'Low Volume' if lang_choice=='EN' else '缩量盘整'}:** {'Market is waiting. Low volatility expected.' if lang_choice=='EN' else '交投清淡，目前处于洗盘或蓄势阶段。'}"
-                    if v_msg: st.info(v_msg)
+                with st.expander(f"📊 {selected_stock} - {'Full Investment Analysis' if lang_choice=='EN' else '全维度投资价值报告'}", expanded=True):
                     
-                    # 技术
-                    st.write(f"📈 **{'Technical' if lang_choice=='EN' else '技术面'}:** RSI {s[t['col_rsi']]}, MACD {s[t['col_macd']]}.")
+                    # 1. 估值与成长性 (Valuation & Growth)
+                    st.markdown(f"#### 💰 {'Valuation & Growth' if lang_choice=='EN' else '估值与成长性'}")
+                    peg_v = s[t['col_peg']]
+                    v_msg = f"该股 PEG 为 `{peg_v}`，" if lang_choice=='CN' else f"With a PEG of `{peg_v}`, "
+                    if peg_v < 0.5: v_msg += "处于极度低估状态，增长动能远超估值。" if lang_choice=='CN' else "the stock is deeply undervalued relative to its growth."
+                    else: v_msg += "处于合理偏低区间，具备防御性。" if lang_choice=='CN' else "the valuation is reasonable with a safety margin."
+                    st.write(f"· {v_msg}")
+                    st.write(f"· {'High capital efficiency with ROE' if lang_choice=='EN' else '净资产收益率'} `{s[t['col_roe']]}%` {'reflects a strong industry moat.' if lang_choice=='EN' else '反映了卓越的行业竞争力。'}")
 
+                    # 2. 财务稳健性 (Financial Health)
+                    st.markdown(f"#### 🛡️ {'Financial Resilience' if lang_choice=='EN' else '财务稳健度 (护城河)'}")
+                    fcf_v, debt_v = float(s[t['col_fcf']]), float(s[t['col_debt']])
+                    f_msg = f"自由现金流 ${fcf_v}B 极其充沛，" if lang_choice=='CN' else f"FCF of ${fcf_v}B is very healthy, "
+                    f_msg += f"且负债率仅为 {debt_v}%，抗风险能力极强。" if lang_choice=='CN' else f"combined with a low debt of {debt_v}%, showing elite resilience."
+                    st.write(f"· {f_msg}")
+
+                    # 3. 技术面与量能 (Technical & Volume)
+                    st.markdown(f"#### 📈 {'Momentum & Volume' if lang_choice=='EN' else '趋势与动能'}")
+                    v_ratio = float(s[t['col_vol_ratio']].replace('%',''))
+                    vol_eval = "放量突破，大资金介入明显。" if v_ratio > 30 else ("缩量震荡，等待方向选择。" if v_ratio < -30 else "量能平稳。")
+                    if lang_choice == 'EN':
+                        vol_eval = "Strong volume surge, institutional buying." if v_ratio > 30 else ("Consolidating on low volume." if v_ratio < -30 else "Stable volume.")
+                    
+                    st.write(f"· **{'Volume' if lang_choice=='EN' else '量能'}:** `{s[t['col_vol_ratio']]}` — {vol_eval}")
+                    st.write(f"· **{'Indicators' if lang_choice=='EN' else '指标'}:** RSI `{s[t['col_rsi']]}` ({'Oversold' if s[t['col_rsi']] < 30 else 'Neutral'}), MACD `{s[t['col_macd']]}`")
+
+                    # 4. 终极评级 (Final Rating)
+                    st.divider()
+                    # 评级逻辑：PEG低+RSI低+金叉 = A+
+                    score = 0
+                    if peg_v < 0.7: score += 1
+                    if s[t['col_rsi']] < 45: score += 1
+                    if "金叉" in s[t['col_macd']] or "▲" in s[t['col_macd']]: score += 1
+                    
+                    ratings = {
+                        3: ("STRONG BUY (A+)", "强力买入 (A+)", "🔥 估值、动能与量能产生完美共振，极具爆发力。"),
+                        2: ("ACCUMULATE (A)", "建议建仓 (A)", "✅ 基本面扎实，建议在当前位置分批布局。"),
+                        1: ("HOLD (B)", "建议持有 (B)", "⚖️ 处于盘整期，建议观察支撑位，不宜追高。"),
+                        0: ("WAIT (C)", "观望 (C)", "⏳ 指标尚未企稳，建议等待回调或放量信号。")
+                    }
+                    r_en, r_cn, r_desc = ratings.get(score, ratings[1])
+                    
+                    st.success(f"### 🏆 {'Rating' if lang_choice=='EN' else '最终评级'}: {r_en if lang_choice=='EN' else r_cn}")
+                    st.info(r_desc if lang_choice=='CN' else "The fundamentals are solid, but wait for a clear entry point or momentum shift.")
+
+        # 展示主表格
         st.dataframe(display_df.drop(columns=['vol_num']), use_container_width=True, height=500, hide_index=True)
