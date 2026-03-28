@@ -88,7 +88,21 @@ if st.button(t["scan_btn"]):
                 # 🎯 获取做空率 (Short % of Float)
                 short_ratio = info.get('shortPercentOfFloat', 0) * 100
 
-                f_match = (0 < pe < target_pe and 0 < peg < target_peg and roe > target_roe and fcf > min_fcf_input and debt < max_debt_input)
+# 1. 先确保数据都是数字（防止 None 导致比较失败）
+                pe_val = float(pe) if pe else 0
+                peg_val = float(peg) if peg else 0
+                roe_val = float(roe) if roe else 0
+                fcf_val = float(fcf) if fcf else 0
+                debt_val = float(debt) if debt else 0
+
+                # 2. 修改筛选逻辑：去掉 0 < peg，只要 peg 小于目标且不为负数即可
+                # 同时确保 PE 是正数（排除亏损公司）
+                f_match = (0 < pe_val < target_pe and 
+                           0 <= peg_val < target_peg and 
+                           roe_val > target_roe and 
+                           fcf_val > min_fcf_input and 
+                           debt_val < max_debt_input)
+                
                 final_cond = (f_match and price > ma200) if above_ma200_only else f_match
 
                 results.append({
