@@ -135,11 +135,10 @@ if st.button(t["scan_btn"]):
     toronto_tz = pytz.timezone('America/Toronto')
     st.session_state.update_time = datetime.now(toronto_tz).strftime("%Y-%m-%d %H:%M:%S")
 
-# --- 5. 展示逻辑 ---
+# --- 5. 展示逻辑 (新增 AI 一键分析功能) ---
 if st.session_state.get('scan_results'):
     df = pd.DataFrame(st.session_state.scan_results)
     
-    # 🛡️ 核心修复：检查 DataFrame 是否包含结果列，防止手机端报错
     if not df.empty and t["col_result"] in df.columns:
         st.divider()
         if st.session_state.update_time:
@@ -149,11 +148,37 @@ if st.session_state.get('scan_results'):
         with col1: show_only = st.checkbox(t["matching_only"], value=False)
         with col2: st.download_button("📥 CSV", df.to_csv(index=False).encode('utf-8-sig'), f"Issac_{time.strftime('%Y%m%d')}.csv")
 
-        display_df = df[df[t["col_result"]].str.contains("符合")] if show_only else df
+        # 筛选出符合条件的股票用于分析
+        match_df = df[df[t["col_result"]].str.contains("符合")]
+        display_df = match_df if show_only else df
         
+        # --- 🤖 智能 AI 分析组件 ---
+        if not match_df.empty:
+            st.subheader("🤖 Issac AI 深度个股分析")
+            selected_stock = st.selectbox("🎯 选择一只符合要求的优质股进行一键分析：", match_df[t["col_code"]].tolist())
+            
+            if selected_stock:
+                s_data = match_df[match_df[t["col_code"]] == selected_stock].iloc[0]
+                with st.expander(f"查看 {selected_stock} 的 Issac-Style 综合评定", expanded=True):
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.write(f"**核心逻辑：**")
+                        st.write(f"该股 PEG 为 `{s_data[t['col_peg']]}`，ROE 高达 `{s_data[t['col_roe']]}%`。")
+                        st.write(f"目前的 RSI 为 `{s_data[t['col_rsi']]}`，处于 `{s_data[t['col_kdj']]}` 状态。")
+                    with col_b:
+                        # 模拟 AI 简评逻辑
+                        analysis = ""
+                        if s_data[t['col_peg']] < 0.5: analysis = "🔥 **极度低估：** 利润增长远超股价涨幅，典型的价值陷阱脱离者。"
+                        elif s_data[t['col_peg']] < 1.0: analysis = "✅ **合理偏低：** 具备良好的安全边际，适合分批建仓。"
+                        
+                        if "金叉" in s_data[t["col_macd"]]: analysis += "\n\n📈 **趋势走强：** MACD 已现金叉，技术面与基本面产生共振。"
+                        if s_data[t["col_rsi"]] < 30: analysis += "\n\n💎 **黄金坑：** RSI 极低，技术面超跌严重，反弹动能积蓄中。"
+                        
+                        st.info(analysis if analysis else "📊 **稳健观察：** 基本面扎实，建议关注支撑位表现。")
+
+        # 展示主表格
         if not display_df.empty:
             st.success(t["found_msg"].format(n=len(display_df)))
-            # 🎯 使用 st.dataframe 提供固定表头和滚动功能
-            st.dataframe(display_df, use_container_width=True, height=600, hide_index=True)
+            st.dataframe(display_df, use_container_width=True, height=500, hide_index=True)
         else:
             st.warning(t["no_match"])
