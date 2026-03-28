@@ -71,38 +71,28 @@ if st.button(t["scan_btn"]):
                 hist = stock.history(period="1y")
                 if len(hist) < 35: continue
                 
-                price = hist['Close'].iloc[-1]
-                ma200 = hist['Close'].rolling(200).mean().iloc[-1]
+                # 核心价格数据
+                price = float(hist['Close'].iloc[-1])
+                ma200 = float(hist['Close'].rolling(200).mean().iloc[-1])
                 vol_ratio = ((hist['Volume'].iloc[-1] / hist['Volume'].iloc[-8:-1].mean()) - 1) * 100
                 
                 # 技术指标
                 delta = hist['Close'].diff()
                 gain = (delta.where(delta > 0, 0)).rolling(14).mean()
                 loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
-                rsi = 100 - (100 / (1 + gain/loss)).iloc[-1]
+                rsi_val = 100 - (100 / (1 + gain/loss)).iloc[-1]
                 
-                # 财务 & 做空数据
+                # 财务数据 (数据清洗)
                 info = stock.info
-                pe, peg, roe = info.get('forwardPE', 0), info.get('pegRatio', 0), info.get('returnOnEquity', 0) * 100
-                fcf, debt = info.get('freeCashflow', 0) / 1e9, info.get('debtToEquity', 0)
-                # 🎯 获取做空率 (Short % of Float)
-                short_ratio = info.get('shortPercentOfFloat', 0) * 100
+                pe = float(info.get('forwardPE', 0))
+                peg = float(info.get('pegRatio', info.get('trailingPegRatio', 0)))
+                roe = float(info.get('returnOnEquity', 0)) * 100
+                fcf = float(info.get('freeCashflow', 0)) / 1e9
+                debt = float(info.get('debtToEquity', 0))
+                short_ratio = float(info.get('shortPercentOfFloat', 0)) * 100
 
-# 1. 先确保数据都是数字（防止 None 导致比较失败）
-                pe_val = float(pe) if pe else 0
-                peg_val = float(peg) if peg else 0
-                roe_val = float(roe) if roe else 0
-                fcf_val = float(fcf) if fcf else 0
-                debt_val = float(debt) if debt else 0
-
-                # 2. 修改筛选逻辑：去掉 0 < peg，只要 peg 小于目标且不为负数即可
-                # 同时确保 PE 是正数（排除亏损公司）
-                f_match = (0 < pe_val < target_pe and 
-                           0 <= peg_val < target_peg and 
-                           roe_val > target_roe and 
-                           fcf_val > min_fcf_input and 
-                           debt_val < max_debt_input)
-                
+                # 🎯 修复 PEG 0 值筛选逻辑
+                f_match = (0 < pe < target_pe and 0 <= peg < target_peg and roe > target_roe and fcf > min_fcf_input and debt < max_debt_input)
                 final_cond = (f_match and price > ma200) if above_ma200_only else f_match
 
                 results.append({
@@ -110,11 +100,12 @@ if st.button(t["scan_btn"]):
                     t["col_ma200"]: f"${ma200:.2f}", t["col_pe"]: round(pe, 2),
                     t["col_peg"]: round(peg, 2), t["col_roe"]: round(roe, 1),
                     t["col_fcf"]: round(fcf, 2), t["col_debt"]: round(debt, 1),
-                    t["col_rsi"]: round(rsi, 1), 
-                    t["col_short"]: f"{short_ratio:.2f}%", # 🎯 显示做空率
+                    t["col_rsi"]: round(rsi_val, 1), 
+                    t["col_short"]: f"{short_ratio:.2f}%",
                     t["col_vol_ratio"]: f"{vol_ratio:+.1f}%",
                     t["col_result"]: "✅ 符合" if final_cond else "❌ 不符",
-                    "short_num": short_ratio, "price_val": price, "ma200_val": ma200
+                    # 🎯 隐藏数据字段（变量名前加下划线，Streamlit 默认会处理或手动排除）
+                    "_short_val": short_ratio, "_price_val": price, "_ma200_val": ma200, "_vol_val": vol_ratio
                 })
             except: pass
             time.sleep(0.01)
@@ -127,27 +118,27 @@ if st.session_state.get('scan_results'):
     if not df.empty:
         st.divider()
         st.caption(f"{t['last_update']} {st.session_state.update_time}")
+        
+        # 🎯 只显示不带下划线的列
+        display_cols = [c for c in df.columns if not c.startswith('_')]
         match_df = df[df[t["col_result"]].str.contains("符合|Match")]
         
         if not match_df.empty:
-            st.subheader(f"🤖 Issac AI {'Deep Insight' if lang_choice=='EN' else '深度投资研判'}")
+            st.subheader(f"🤖 Issac AI {'Stock Intelligence' if lang_choice=='EN' else '深度投资研判'}")
             selected_stock = st.selectbox(f"🎯 {'Analysis:' if lang_choice=='EN' else '个股研判：'}", match_df[t["col_code"]].tolist())
             
             if selected_stock:
                 s = match_df[match_df[t["col_code"]] == selected_stock].iloc[0]
                 with st.expander(f"📊 {selected_stock} - {'Report' if lang_choice=='EN' else '深度报告'}", expanded=True):
-                    # 做空预警逻辑
-                    short_v = s['short_num']
-                    if short_v > 5:
-                        warn_msg = f"⚠️ **{'Short Warning' if lang_choice=='EN' else '空头预警'}:** {'Short Interest is high' if lang_choice=='EN' else '做空率较高'}({short_v:.1f}%)。{'High pressure from bears, avoid catching falling knives.' if lang_choice=='EN' else '空头力量正在集结，注意阴跌风险。'}"
-                        st.error(warn_msg)
+                    # 空头预警
+                    if s['_short_val'] > 5:
+                        st.error(f"⚠️ **{'Short Warning' if lang_choice=='EN' else '空头预警'}:** ({s['_short_val']:.1f}%) {'High bear pressure.' if lang_choice=='EN' else '空头集结，注意阴跌。'}")
+                    # 趋势警告
+                    if s['_price_val'] < s['_ma200_val']:
+                        st.warning(f"❌ **{'Weak Trend' if lang_choice=='EN' else '趋势极弱'}:** {'Price below MA200.' if lang_choice=='EN' else '股价处于 MA200 下方。'}")
                     
-                    # 价格与均线关系
-                    if s['price_val'] < s['ma200_val']:
-                        trend_msg = "❌ **趋势极弱:** 股价位于 MA200 下方，属于左侧交易，风险极大。" if lang_choice=='CN' else "❌ **Weak Trend:** Below MA200. High risk bottom-fishing."
-                        st.warning(trend_msg)
-                    
-                    st.write(f"💵 **{'Fundamental' if lang_choice=='EN' else '财务'}:** PEG {s[t['col_peg']]}, ROE {s[t['col_roe']]}%.")
-                    st.write(f"📈 **{'Technical' if lang_choice=='EN' else '量价'}:** RSI {s[t['col_rsi']]}, Vol {s[t['col_vol_ratio']]}.")
+                    st.write(f"💵 **PEG {s[t['col_peg']]}, ROE {s[t['col_roe']]}%.**")
+                    st.write(f"📈 **RSI {s[t['col_rsi']]}, Vol {s[t['col_vol_ratio']]}.**")
 
-        st.dataframe(df[df[t["col_result"]].str.contains("符合|Match")] if st.checkbox(t["matching_only"], value=True) else df, use_container_width=True, height=500, hide_index=True)
+        final_df = (match_df if st.checkbox(t["matching_only"], value=True) else df)[display_cols]
+        st.dataframe(final_df, use_container_width=True, height=500, hide_index=True)
