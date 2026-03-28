@@ -5,15 +5,15 @@ import time
 from datetime import datetime
 import pytz
 
-# --- 1. 语言配置 ---
+# --- 1. 配置 ---
 LANG = {
     "CN": {
-        "title": "🍎 Issac 价值投资筛选器", "sidebar_header": "筛选条件设置",
-        "ma200_label": "📈 仅限 200 日均线上方", "pe_label": "最高市盈率 (P/E)",
-        "peg_label": "最高 PEG", "fcf_label": "最低自由现金流 (10亿$)",
-        "roe_label": "最低 ROE (%)", "debt_label": "最高资产负债率 (%)",
-        "index_label": "📊 选择范围", "scan_btn": "开始扫描股票池",
-        "matching_only": "🔍 只显示符合要求的股票",
+        "title": "🍎 Issac 价值投资筛选器", "sidebar_header": "筛选设置",
+        "ma200_label": "📈 仅限 MA200 上方", "pe_label": "最高 P/E",
+        "peg_label": "最高 PEG", "fcf_label": "最低 FCF (10亿$)",
+        "roe_label": "最低 ROE (%)", "debt_label": "最高负债率 (%)",
+        "index_label": "📊 扫描范围", "scan_btn": "开始扫描",
+        "matching_only": "🔍 只看符合条件的股票",
         "col_code": "代码", "col_price": "价格", "col_ma200": "MA200",
         "col_pe": "P/E", "col_peg": "PEG", "col_roe": "ROE(%)", "col_fcf": "FCF($B)", 
         "col_debt": "负债率", "col_rsi": "RSI", "col_macd": "MACD", 
@@ -25,22 +25,21 @@ LANG = {
         "ma200_label": "📈 Above MA200 Only", "pe_label": "Max P/E",
         "peg_label": "Max PEG", "fcf_label": "Min FCF ($B)",
         "roe_label": "Min ROE (%)", "debt_label": "Max Debt (%)",
-        "index_label": "📊 Select Index", "scan_btn": "Start Scanning",
+        "index_label": "📊 Select Index", "scan_btn": "Start Scan",
         "matching_only": "🔍 Matches Only",
         "col_code": "Symbol", "col_price": "Price", "col_ma200": "MA200",
         "col_pe": "P/E", "col_peg": "PEG", "col_roe": "ROE(%)", "col_fcf": "FCF($B)", 
         "col_debt": "D/E (%)", "col_rsi": "RSI", "col_macd": "MACD", 
         "col_vol": "Vol/7D", "col_short": "Short %", "col_res": "Result",
-        "last_up": "⏱️ Last Updated (Toronto): "
+        "last_up": "⏱️ Last Updated: "
     }
 }
 
 st.set_page_config(page_title="Issac Picker Pro", layout="wide")
-lang_choice = st.sidebar.radio("🌐 Language", ["CN", "EN"], horizontal=True)
-t = LANG[lang_choice]
+lang = st.sidebar.radio("🌐 Language", ["CN", "EN"], horizontal=True)
+t = LANG[lang]
 st.title(t["title"])
 
-# 侧边栏
 above_ma200 = st.sidebar.checkbox(t["ma200_label"], value=False)
 t_pe = st.sidebar.slider(t["pe_label"], 5.0, 50.0, 20.0)
 t_peg = st.sidebar.slider(t["peg_label"], 0.1, 3.0, 1.0) 
@@ -72,63 +71,81 @@ if st.button(t["scan_btn"]):
                 h = tk.history(period="1y")
                 if len(h) < 35: continue
                 cur_p, m200 = float(h['Close'].iloc[-1]), float(h['Close'].rolling(200).mean().iloc[-1])
-                v_r = ((h['Volume'].iloc[-1] / h['Volume'].iloc[-8:-1].mean()) - 1) * 100
+                v_avg = h['Volume'].iloc[-8:-1].mean()
+                v_r = ((h['Volume'].iloc[-1] / v_avg) - 1) * 100 if v_avg > 0 else 0
+                
                 diff = h['Close'].diff()
-                rsi = 100 - (100 / (1 + (diff.where(diff > 0, 0).rolling(14).mean() / -diff.where(diff < 0, 0).rolling(14).mean()))).iloc[-1]
+                gain, loss = diff.where(diff > 0, 0).rolling(14).mean(), -diff.where(diff < 0, 0).rolling(14).mean()
+                rsi = 100 - (100 / (1 + (gain.iloc[-1]/loss.iloc[-1]))) if loss.iloc[-1] != 0 else 50
+                
                 ema12, ema26 = h['Close'].ewm(span=12).mean(), h['Close'].ewm(span=26).mean()
                 macd_v = ema12 - ema26
-                macd = "▲ 金叉" if macd_v.iloc[-1] > macd_v.ewm(span=9).mean().iloc[-1] else "▼ 死叉"
+                macd_s = "▲ 金叉" if macd_v.iloc[-1] > macd_v.ewm(span=9).mean().iloc[-1] else "▼ 死叉"
+                
                 inf = tk.info
                 pe, peg, roe = float(inf.get('forwardPE', 0)), float(inf.get('pegRatio', 0.1)), float(inf.get('returnOnEquity', 0)) * 100
                 fcf, debt, sh = float(inf.get('freeCashflow', 0))/1e9, float(inf.get('debtToEquity', 0)), float(inf.get('shortPercentOfFloat', 0))*100
+                
                 f_m = (0 < pe < t_pe and 0 <= peg < t_peg and roe > t_roe and fcf > m_fcf and debt < m_debt)
                 ok = "✅ 符合" if (f_m and cur_p > m200 if above_ma200 else f_m) else "❌ 不符"
-                data.append({t["col_code"]:s, t["col_price"]:f"${cur_p:.2f}", t["col_ma200"]:f"${m200:.2f}", t["col_pe"]:pe, t["col_peg"]:peg, t["col_roe"]:round(roe,1), t["col_fcf"]:round(fcf,1), t["col_debt"]:round(debt,1), t["col_rsi"]:round(rsi,1), t["col_macd"]:macd, t["col_short"]:f"{sh:.1f}%", t["col_vol"]:f"{v_r:+.1f}%", t["col_res"]:ok, "_p":cur_p, "_m":m200, "_sh":sh, "_v":v_r})
+                
+                data.append({
+                    t["col_code"]:s, t["col_price"]:f"${cur_p:.2f}", t["col_ma200"]:f"${m200:.2f}", 
+                    t["col_pe"]:pe, t["col_peg"]:peg, t["col_roe"]:round(roe,1), 
+                    t["col_fcf"]:round(fcf,1), t["col_debt"]:round(debt,1), 
+                    t["col_rsi"]:round(rsi,1), t["col_macd"]:macd_s, t["col_short"]:f"{sh:.1f}%", 
+                    t["col_vol"]:f"{v_r:+.1f}%", t["col_res"]:ok, 
+                    "_p":cur_p, "_m":m200, "_sh":sh, "_v":v_r # 🎯 关键：显式定义隐藏字段
+                })
             except: pass
     st.session_state.res = data
     st.session_state.up_t = datetime.now(pytz.timezone('America/Toronto')).strftime("%Y-%m-%d %H:%M:%S")
 
-# --- 5. 展示与 深度 AI 报告 ---
+# --- 5. 展示与 深度报告 ---
 if st.session_state.res:
     df = pd.DataFrame(st.session_state.res)
     st.caption(f"{t['last_up']} {st.session_state.up_t}")
     m_df = df[df[t["col_res"]].str.contains("✅")]
     
     if not m_df.empty:
-        st.subheader(f"🤖 Issac AI {'Stock Intelligence Center' if lang_choice=='EN' else '深度投资研判中心'}")
-        sel = st.selectbox(f"🎯 {'Analyze Target:' if lang_choice=='EN' else '选择分析目标：'}", m_df[t["col_code"]].tolist())
+        st.subheader("🤖 Issac AI Pro 深度研判中心")
+        sel = st.selectbox("🎯 Target Stock:", m_df[t["col_code"]].tolist())
         s = m_df[m_df[t["col_code"]] == sel].iloc[0]
         
-        with st.expander(f"📊 {sel} - {'Full Institutional Report' if lang_choice=='EN' else '全维度深度研报'}", expanded=True):
-            # 版块 1: 风险预警
-            st.markdown(f"#### 🚩 {'Risk & Trend' if lang_choice=='EN' else '趋势与风险'}")
-            r_c1, r_c2 = st.columns(2)
-            with r_c1:
-                if s['_sh'] > 5: st.error(f"⚠️ {'High Short Ratio' if lang_choice=='EN' else '空头预警'}: {s['_sh']:.1f}%. {'Bears are aggressive.' if lang_choice=='EN' else '做空抛压较大。'}")
-                else: st.success("✅ " + ("Short risk low" if lang_choice=='EN' else "空头风险极低"))
-            with r_c2:
-                if s['_p'] < s['_m']: st.error("❌ " + ("Weak Trend: Below MA200" if lang_choice=='EN' else "趋势性破位: 处于 MA200 下方"))
-                else: st.success("📈 " + ("Strong Trend: Above MA200" if lang_choice=='EN' else "趋势多头: 站稳牛熊线"))
+        with st.expander(f"📊 {sel} - 机构级深度投研报告", expanded=True):
+            # 1. 风险与大势
+            st.markdown("#### 🚩 风险雷达 & 趋势判定")
+            c1, c2 = st.columns(2)
+            with c1:
+                if s['_sh'] > 5: st.error(f"⚠️ **高空头警示**: 做空率 {s['_sh']:.1f}%，抛压极大。")
+                else: st.success("✅ **筹码稳健**: 无明显大规模做空。")
+            with c2:
+                if s['_p'] < s['_m']: st.error("❌ **弱势行情**: 股价在 MA200 下方，小心阴跌。")
+                else: st.success("📈 **牛市行情**: 站稳牛熊线，向上动能足。")
 
-            # 版块 2: 护城河
+            # 2. 护城河深度解读
             st.markdown("---")
-            st.markdown(f"#### 🏛️ {'Fundamental Quality' if lang_choice=='EN' else '基本面护城河'}")
-            st.write(f"· **{'Efficiency' if lang_choice=='EN' else '资本回报'}**: ROE `{s[t['col_roe']]}%` — {'Elite efficiency' if s[t['col_roe']] > 25 else 'Solid return' if lang_choice=='EN' else '卓越的盈利能力' if s[t['col_roe']] > 25 else '盈利稳健'}")
-            st.write(f"· **{'Cash Fortress' if lang_choice=='EN' else '现金壁垒'}**: FCF `${s[t['col_fcf']]}B` — {'Strong buyback potential' if lang_choice=='EN' else '充足的扩张与回购底气'}")
-            st.write(f"· **{'Valuation' if lang_choice=='EN' else '估值评价'}**: PEG `{s[t['col_peg']]}` — {'Undervalued' if s[t['col_peg']] < 1 else 'Fairly priced' if lang_choice=='EN' else '低估扩张期' if s[t['col_peg']] < 1 else '估值合理'}")
+            st.markdown("#### 🏛️ 基本面护城河 (Fundamentals)")
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("PEG (性价比)", s[t['col_peg']], delta="极度低估" if s[t['col_peg']] < 0.6 else None)
+            col_b.metric("ROE (盈利能力)", f"{s[t['col_roe']]}%", delta="超强印钞机" if s[t['col_roe']] > 30 else None)
+            col_c.metric("FCF (现金储备)", f"${s[t['col_fcf']]}B")
+            
+            st.write(f"· **深度点评**: 该公司目前的 P/E 为 `{s[t['col_pe']]}`。配合 ROE 来看，管理层资本运作效率{'极高' if s[t['col_roe']] > 25 else '稳健'}。自由现金流充足，具备极强的抗风险和回购能力。")
 
-            # 版块 3: 技术择时
+            # 3. 量价择时 (Timing)
             st.markdown("---")
-            st.markdown(f"#### 📉 {'Technical Timing' if lang_choice=='EN' else '量价择时信号'}")
-            v_msg = "🚀 巨量突破" if s['_v'] > 50 else ("💤 缩量盘整" if s['_v'] < -30 else "平稳换手")
-            st.write(f"· **{'Volume' if lang_choice=='EN' else '成交量'}**: `{s[t['col_vol']]}` ({v_msg})")
-            st.write(f"· **{'Indicators' if lang_choice=='EN' else '技术指标'}**: RSI `{s[t['col_rsi']]}` ({'超卖' if s[t['col_rsi']] < 30 else '中性'}), MACD `{s[t['col_macd']]}`")
+            st.markdown("#### 📉 技术面 & 量能异动")
+            v_msg = "🔥 **巨量突破**: 资金介入明显！" if s['_v'] > 50 else ("💤 **缩量盘整**: 散户博弈为主。" if s['_v'] < -30 else "量能平稳换手。")
+            st.write(f"· **成交量(7日对比)**: `{s[t['col_vol']]}` — {v_msg}")
+            st.write(f"· **趋势信号**: MACD `{s[t['col_macd']]}` | RSI `{s[t['col_rsi']]}` ({'超卖反弹预警' if s[t['col_rsi']] < 35 else '中性偏稳'})")
 
             # 结论
             st.divider()
             score = (1 if s[t['col_peg']] < 0.7 else 0) + (1 if s[t['col_roe']] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0)
-            rating = ["Wait (C)", "Hold (B)", "Buy (A)", "Strong Buy (A+)"][score]
-            st.success(f"🏆 **{'Final Verdict' if lang_choice=='EN' else 'Issac 终极判定'}: {rating}**")
+            res_map = {3:("Strong Buy (A+)", "🔥 极品资产，量价齐飞，建议果断关注。"), 2:("Buy (A)", "✅ 优质公司，趋势向好，建议分批入场。"), 1:("Hold (B)", "⚖️ 估值尚可但趋势偏弱，建议设好止损。"), 0:("Wait (C)", "⏳ 风险较高，建议等待底部放量信号。")}
+            rating, desc = res_map.get(score, res_map[1])
+            st.success(f"### 🏆 最终评级: {rating}")
+            st.info(f"💡 **操盘建议**: {desc}")
 
-    final_df = (m_df if st.checkbox(t["matching_only"], value=True) else df)[[c for c in df.columns if not c.startswith('_')]]
-    st.dataframe(final_df, use_container_width=True, height=500, hide_index=True)
+    st.dataframe(m_df if st.checkbox(t["matching_only"], value=True) else df, use_container_width=True, hide_index=True)
