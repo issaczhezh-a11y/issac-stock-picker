@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 智库文案库 (v33.0 修正版)
+# lang_config.py - Issac Terminal 智库文案库 (v34.0 稳定版)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -25,6 +25,10 @@ LANG = {
         "earnings_label": "🚦 **财报高危预警**：将于 {days} 天后 ({date}) 公布财报。建议离场观望，防止“财报杀”。",
         
         "moat_title": "🏰 商业模式与护城河深度透视",
+        "moat_elite": "💎 **护城河评级：顶级 (Elite)**。极高 ROE 意味着强大的定价权。",
+        "moat_wide": "🛡️ **护城河评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
+        "moat_narrow": "🚧 **护城河评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
+        
         "fin_title": "🏛️ 盈利质量与财务安全评价",
         "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (当前) vs **{prev}%** (ref)。盈利模式具备连贯性。",
         
@@ -37,7 +41,7 @@ LANG = {
         "verdict_title": "🏆 Issac 级终极研判",
         "verdicts": ["观望 (C)","持有 (B)","买入 (A)","强力买入 (A+)"],
         "strategies": ["⚠️ 趋势极弱，场外等候。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，逢低建仓。","🔥 极品资产，量价齐飞，建议果断持股！"],
-        "strategy_label": "💡 机构级操盘策略"
+        "strategy_label": "💡 机构级操盘建议"
     },
     "EN": {
         "title": "🍎 Issac Investment Research Terminal",
@@ -64,6 +68,10 @@ LANG = {
         "earnings_label": "🚦 **Earnings Alert**: Upcoming on {date} ({days} days away). Recommend waiting.",
         
         "moat_title": "🏰 Business Model & Moat Insight",
+        "moat_elite": "💎 **Moat Rating: Elite**. Exceptional ROE indicates dominance.",
+        "moat_wide": "🛡️ **Moat Rating: Wide**. Mature barriers with high earnings quality.",
+        "moat_narrow": "🚧 **Moat Rating: Narrow**. Stiff competition; monitor margins.",
+        
         "fin_title": "🏛️ Fundamentals & Financial Safety",
         "consistency_label": "· **ROE Stability Audit**: **{curr}%** (Curr) vs **{prev}%** (Ref). Profit model is consistent.",
         
