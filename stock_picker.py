@@ -10,32 +10,37 @@ from lang_config import LANG
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
-st.title(t["title"])
+st.title(t.get("title", "Issac Terminal"))
 
 WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "Inst%", "P/E", "PEG", "Match"]
 
 # --- 2. 侧边栏 ---
-st.sidebar.header(t.get("sidebar_header"))
-search_ticker = st.sidebar.text_input(t.get("search_label"), "").upper().strip()
+st.sidebar.header(t.get("sidebar_header", "Settings"))
+search_ticker = st.sidebar.text_input(t.get("search_label", "Search"), "").upper().strip()
 st.sidebar.divider()
-t_pe, t_peg = st.sidebar.number_input(t.get("pe_label"), value=25.0), st.sidebar.number_input(t.get("peg_label"), value=1.2)
-m_roe, m_fcf = st.sidebar.number_input(t.get("roe_label"), value=15.0), st.sidebar.number_input(t.get("fcf_label"), value=0.5)
+t_pe, t_peg = st.sidebar.number_input(t.get("pe_label", "Max P/E"), value=25.0), st.sidebar.number_input(t.get("peg_label", "Max PEG"), value=1.2)
+m_roe, m_fcf = st.sidebar.number_input(t.get("roe_label", "Min ROE"), value=15.0), st.sidebar.number_input(t.get("fcf_label", "Min FCF"), value=0.5)
 st.sidebar.divider()
-idx_mode = st.sidebar.selectbox(t.get("scan_range"), ["S&P 500", "Nasdaq 100"])
-scan_btn = st.sidebar.button(t.get("scan_btn"))
+idx_mode = st.sidebar.selectbox(t.get("scan_range", "Scan Range"), ["S&P 500", "Nasdaq 100"])
+scan_btn = st.sidebar.button(t.get("scan_btn", "Scan"))
 
-# --- 3. 宏观风控引擎 ---
+# --- 3. 宏观风控引擎 (周末加固版) ---
 def get_macro_radar():
     try:
-        vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
-        tnx = yf.Ticker("^TNX").history(period="1d")['Close'].iloc[-1]
+        # 周末 1d 可能会空，取 5d 确保有数
+        v_h = yf.Ticker("^VIX").history(period="5d")
+        vix = v_h['Close'].iloc[-1] if not v_h.empty else 20.0
+        
+        t_h = yf.Ticker("^TNX").history(period="5d")
+        tnx = t_h['Close'].iloc[-1] if not t_h.empty else 4.0
+        
         spy_h = yf.Ticker("SPY").history(period="1y")
         spy_p = spy_h['Close'].iloc[-1]
         spy_ma200 = spy_h['Close'].rolling(200).mean().iloc[-1]
         
         if vix > 28 or spy_p < spy_ma200 * 0.98:
             mood, status = "mood_panic", "CRASH"
-        elif vix > 21:
+        elif vix > 22:
             mood, status = "mood_fear", "CAUTION"
         else:
             mood, status = "mood_greed", "BULL"
@@ -52,35 +57,32 @@ def get_analysis(s):
         p = h['Close'].iloc[-1]
         m200_val = h['Close'].rolling(200).mean().iloc[-1]
         
-        # 数据抓取
+        # 基础数据
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
         cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
         
-        # 估值水位
+        # 估值分位
         pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
         pe_pct = "N/A"
         try:
-            hist_pe = h['Close'] / (inf.get('trailingEps', 1))
-            pe_pct = round((hist_pe < pe_curr).mean() * 100, 1)
+            pe_pct = round(( (h['Close'] / (inf.get('trailingEps', 1))) < pe_curr ).mean() * 100, 1)
         except: pass
 
-        # 财报日期暴力抓取
+        # 财报抓取
         n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "0.0"
         try:
-            cal = tk.calendar
-            if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
-                c_date = cal.loc['Earnings Date'].iloc[0]
-                n_date, n_days = c_date.strftime('%Y-%m-%d'), (pd.to_datetime(c_date).replace(tzinfo=None) - datetime.now()).days
-            
             e_dates = tk.get_earnings_dates(limit=8)
             if e_dates is not None and not e_dates.empty:
                 e_dates.index = pd.to_datetime(e_dates.index).tz_convert('UTC')
-                pst = e_dates[e_dates.index <= datetime.now(timezone.utc)].sort_index(ascending=False)
+                now = datetime.now(timezone.utc)
+                fut = e_dates[e_dates.index > now].sort_index()
+                if not fut.empty:
+                    n_date, n_days = fut.index[0].strftime('%Y-%m-%d'), (fut.index[0] - now).days
+                pst = e_dates[e_dates.index <= now].sort_index(ascending=False)
                 if not pst.empty:
-                    p_date = pst.index[0].strftime('%Y-%m-%d')
-                    p_act, p_est = pst['Reported EPS'].iloc[0], pst['EPS Estimate'].iloc[0]
+                    p_date, p_act, p_est = pst.index[0].strftime('%Y-%m-%d'), pst['Reported EPS'].iloc[0], pst['EPS Estimate'].iloc[0]
                     if pd.notnull(p_act) and pd.notnull(p_est) and p_est != 0:
                         p_surp = round(((p_act / p_est) - 1) * 100, 1)
         except: pass
@@ -88,13 +90,13 @@ def get_analysis(s):
         # ROE 审计
         prev_roe = "N/A"
         try:
-            y_fin = tk.financials
+            y_fin = tk.get_financials()
             if not y_fin.empty:
                 idx = 1 if len(y_fin.columns) > 1 else 0
-                prev_roe = round((y_fin.loc['Net Income'].iloc[idx] / tk.balance_sheet.loc['Stockholders Equity'].iloc[idx]) * 100, 1)
+                prev_roe = round((y_fin.loc['Net Income'].iloc[idx] / tk.get_balance_sheet().loc['Stockholders Equity'].iloc[idx]) * 100, 1)
         except: pass
 
-        # RS 强度对比
+        # RS 强度
         s_ret, spy_ret = 0, 0
         try:
             h_3m = tk.history(period="3mo")
@@ -118,18 +120,19 @@ def get_analysis(s):
     except: return None
 
 def render_report(s):
-    # --- 1. 宏观雷达部署 ---
+    # --- 1. 宏观雷达 ---
     macro = get_macro_radar()
     if macro:
-        st.markdown(f"### {t.get('macro_title')}")
+        # 🎯 防御性读取：增加 fallback
+        st.markdown(f"### {t.get('macro_title', 'Macro Radar')}")
         m1, m2, m3 = st.columns([1, 1, 2])
-        m1.metric(t.get("vix_label"), macro['vix'])
-        m2.metric(t.get("tnx_label"), f"{macro['tnx']}%")
-        m3.subheader(t.get(macro['mood']))
+        m1.metric(t.get("vix_label", "VIX Index"), macro['vix'])
+        m2.metric(t.get("tnx_label", "10Y Yield"), f"{macro['tnx']}%")
+        m3.subheader(t.get(macro['mood'], macro['mood']))
         if macro['status'] == "CRASH":
-            st.error(t.get("macro_alert"))
+            st.error(t.get("macro_alert", "Macro Alert: Systemic Risk!"))
     
-    # --- 2. 综合评分与快照 ---
+    # --- 2. 综合分与快照 ---
     score = 0
     score += 25 if s['Price'] > s['MA200'] else 0
     score += 25 if s['ROE%'] > 25 else (15 if s['ROE%'] > 15 else 0)
@@ -140,18 +143,18 @@ def render_report(s):
     st.divider()
     c_left, c_right = st.columns([3, 1])
     with c_left:
-        st.markdown(f"## {t.get('snapshot_title')} - {s['Symbol']}")
+        st.markdown(f"## {t.get('snapshot_title', 'Snapshot')} - {s['Symbol']}")
     with c_right:
-        st.metric(t.get('score_label'), f"{score}/100", delta=f"{score-50}")
+        st.metric(t.get('score_label', 'Score'), f"{score}/100", delta=f"{score-50}")
 
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # --- 3. 趋势图与对比 ---
+    # --- 3. 趋势图 ---
     c1, c2 = st.columns([2, 1])
     with c1:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close'), line=dict(color='#00d1ff', width=2)))
-        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200'), line=dict(color='#ffaa00', width=2, dash='dash')))
+        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close', 'Close'), line=dict(color='#00d1ff', width=2)))
+        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200', 'MA200'), line=dict(color='#ffaa00', width=2, dash='dash')))
         fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
     with c2:
@@ -160,55 +163,58 @@ def render_report(s):
         st.plotly_chart(fig_rs, use_container_width=True)
     
     # --- 4. 财报雷达 ---
-    st.markdown(f"### {t.get('earnings_radar_title')}")
-    st.caption(f"🔗 [Yahoo Finance 实时分析入口](https://finance.yahoo.com/quote/{s['Symbol']}/analysis)")
+    st.markdown(f"### {t.get('earnings_radar_title', 'Earnings Radar')}")
+    st.caption(f"🔗 [Yahoo Finance Analysis](https://finance.yahoo.com/quote/{s['Symbol']}/analysis)")
     er1, er2 = st.columns(2)
-    er1.info(t.get('next_earn_label', 'Next: {date}').format(date=s['_n_e'], days=s['_n_d']))
+    next_tmpl = t.get('next_earn_label', 'Next: {date}')
+    er1.info(next_tmpl.format(date=s['_n_e'], days=s['_n_d']))
     with er2:
         surp_v = s['_p_s']
         sur_c = "green" if (isinstance(surp_v, (int, float)) and surp_v > 0) else "red"
         st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
-        st.write(t.get('eps_vs_est', 'EPS').format(act=s['_p_act'], est=s['_p_est'], surp=f":{sur_c}[{surp_v}]"))
+        eps_tmpl = t.get('eps_vs_est', 'Act: {act}')
+        st.write(eps_tmpl.format(act=s['_p_act'], est=s['_p_est'], surp=f":{sur_c}[{surp_v}]"))
 
     # --- 5. 详细研报 ---
-    st.markdown(f"# {t.get('report_title')}")
-    with st.expander(t.get('moat_title'), expanded=True):
-        m_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
-        st.info(f"**{t.get('industry', 'Industry')}**: `{s['_ind']}` | {m_txt}")
+    st.markdown(f"# {t.get('report_title', 'Institutional Report')}")
+    with st.expander(t.get('moat_title', 'Moat Insight'), expanded=True):
+        moat_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
+        st.info(f"**{t.get('industry', 'Industry')}**: `{s['_ind']}` | {moat_txt}")
         st.write(s['_sum'][:1200] + "...")
-    with st.expander(t.get('fin_title'), expanded=True):
+    with st.expander(t.get('fin_title', 'Financials'), expanded=True):
         f1, f2, f3 = st.columns(3)
         f1.metric("Cash (Total)", f"${s['_cash']:.1f}B")
         f2.metric("Indebtedness", f"${s['_debt']:.1f}B")
         f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%")
-        st.write(t.get('cash_label').format(val=s['_cash']))
-        st.write(t.get('debt_val_label').format(val=s['_debt']))
-        st.write(t.get('consistency_label', 'ROE').format(curr=s['ROE%'], prev=s['_prev_roe']))
+        st.write(t.get('cash_label', 'Cash: {val}').format(val=s['_cash']))
+        st.write(t.get('debt_val_label', 'Debt: {val}').format(val=s['_debt']))
+        st.write(t.get('consistency_label', 'ROE Stability: {curr}').format(curr=s['ROE%'], prev=s['_prev_roe']))
         d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
-        st.write(t.get('debt_audit').format(val=s['Debt%'], status=d_st))
-        st.write(t.get('pe_percentile_label').format(val=s['_pe_pct'], status="Normal"))
-    with st.expander(t.get('risk_title'), expanded=True):
+        st.write(t.get('debt_audit', 'Debt: {val}').format(val=s['Debt%'], status=d_st))
+        pe_stat = "Underpriced" if (isinstance(s['_pe_pct'], (int, float)) and s['_pe_pct'] < 25) else "Normal"
+        st.write(t.get('pe_percentile_label', 'Valuation: {val}').format(val=s['_pe_pct'], status=pe_stat))
+    with st.expander(t.get('risk_title', 'Sentiment & Risk'), expanded=True):
         r1, r2 = st.columns(2)
-        r1.success(t.get('inst_label').format(inst=s['_inst'], msg="Confidence High" if s['_inst']>70 else "Balanced"))
-        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear'))
-        else: r2.success(t.get('trend_bull'))
-        st.warning(f"🛡️ **{t.get('stop_loss_label')}**: `${round(s['_m']*0.97, 2)}` | {t.get('stop_loss_note')}")
+        r1.success(t.get('inst_label', 'Ownership').format(inst=s['_inst'], msg="Confidence High" if s['_inst']>70 else "Balanced"))
+        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear', 'Trend: Bearish'))
+        else: r2.success(t.get('trend_bull', 'Trend: Bullish'))
+        st.warning(f"🛡️ **{t.get('stop_loss_label', 'Stop-Loss')}**: `${round(s['_m']*0.97, 2)}` | {t.get('stop_loss_note', 'Note')}")
     
-    # --- 6. 终极研判 (加入宏观否决权) ---
+    # --- 6. 终极结论 ---
     st.divider()
     if macro and macro['status'] == "CRASH":
-        st.error(f"## {t.get('verdict_title')}：{t.get('verdicts')[0]} (Macro Exit)")
-        st.warning("🚨 **风控干预**：大盘已进入恐慌模式（SPY 破线或 VIX 爆表），目前不建议持有任何个股。")
+        st.error(f"## {t.get('verdict_title', 'Verdict')}：{t.get('verdicts', ['Wait', 'Wait'])[0]} (Macro Risk)")
+        st.warning("🚨 Macro Risk干预：系统性风险较高，建议空仓。")
     else:
         v_idx = 1 if s['Price'] < s['MA200']*0.97 else (3 if score > 75 else (2 if score > 50 else 1))
-        st.success(f"## {t.get('verdict_title')}：{t.get('verdicts')[v_idx]}")
-        st.info(f"💡 {t.get('strategy_label')}：{t.get('strategies')[v_idx]}")
+        st.success(f"## {t.get('verdict_title', 'Verdict')}：{t.get('verdicts', ['Wait', 'Hold', 'Buy', 'Strong Buy'])[v_idx]}")
+        st.info(f"💡 {t.get('strategy_label', 'Strategy')}：{t.get('strategies', ['Wait', 'Hold', 'Buy', 'Strong Buy'])[v_idx]}")
 
 # --- 主逻辑 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
-    else: st.error("Ticker not found. Try MSFT or AAPL to verify.")
+    else: st.error("Ticker not found. Try MSFT to verify.")
 
 if scan_btn:
     import urllib.request
@@ -228,7 +234,7 @@ if 'batch_res' in st.session_state:
     df = pd.DataFrame(st.session_state.batch_res)
     m_df = df[df["Match"]=="✅"]
     if not m_df.empty:
-        sel = st.selectbox("Select Target:", m_df["Symbol"].tolist())
+        sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
         target_s = df[df["Symbol"] == sel].iloc[0]
         render_report(target_s)
     st.dataframe(m_df[WHITE_LIST] if not m_df.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
