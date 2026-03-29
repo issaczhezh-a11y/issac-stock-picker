@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 智库文案 (v47.0 最终加固版)
+# lang_config.py - Issac Terminal 智库文案 (v48.0 终极宏观版)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -11,8 +11,8 @@ LANG = {
         "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
         "rs_title": "⚔️ 相对强度 (RS) 动能对比 (vs SPY)",
         "rs_label_spy": "标普 500 (SPY)",
-        "rs_desc_leader": "🔥 **领头羊 (Leader)**：近3个月超越大盘 `{diff:.1f}%`。",
-        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：近3个月落后大盘 `{diff:.1f}%`。",
+        "rs_desc_leader": "🔥 **领头羊 (Leader)**：表现超越大盘 `{diff:.1f}%`。",
+        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：表现落后大盘 `{diff:.1f}%`。",
         "earnings_radar_title": "🚦 财报胜率与盈利预测雷达",
         "next_earn_label": "📅 **下个财报日**: `{date}` (约 `{days}` 天后)",
         "prev_earn_label": "📊 **上季财报回顾 ({date})**",
@@ -36,12 +36,19 @@ LANG = {
         "trend_bear": "❌ **趋势雷达**：股价处于 MA200 下方，多头动能瓦解。",
         "trend_bull": "📈 **趋势雷达**：股价站稳 MA200 上方，多头行情确立。",
         "stop_loss_label": "建议离场位 (基于 MA200)",
-        "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。若收盘跌破请严格执行离场。",
+        "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。",
         "verdict_title": "🏆 Issac 级终极研判",
         "verdicts": ["避险 (C)","观望 (B)","建仓 (A)","重仓 (A+)"],
         "strategies": ["⚠️ 趋势极弱，等候信号。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，逢低买入。","🔥 极品资产，量价齐飞，建议持股！"],
         "strategy_label": "💡 策略指令",
-        "score_label": "⭐ Issac 投研综合评分 (0-100): "
+        "score_label": "⭐ Issac 投研综合评分",
+        "macro_title": "🌐 全球宏观风控雷达",
+        "vix_label": "📉 恐慌指数 (VIX)",
+        "tnx_label": "🏛️ 10年美债收益率",
+        "mood_greed": "🟢 贪婪/平稳 (宜持股)",
+        "mood_fear": "🟡 谨慎/震荡 (控仓位)",
+        "mood_panic": "🔴 恐慌/崩溃 (建议空仓)",
+        "macro_alert": "🚨 **系统性风险警示**：当前大环境恶劣，建议暂时清仓回避！"
     },
     "EN": {
         "title": "🍎 Issac Investment Research Terminal",
@@ -83,6 +90,13 @@ LANG = {
         "verdicts": ["Wait (C)", "Hold (B)", "Accumulate (A)", "STRONG CONVICTION (A+)"],
         "strategies": ["Wait for signals.", "Monitor only.", "Accumulate on dips.", "Strong conviction hold."],
         "strategy_label": "💡 Strategy",
-        "score_label": "⭐ Issac Composite Score (0-100): "
+        "score_label": "⭐ Issac Composite Score",
+        "macro_title": "🌐 Macro Radar",
+        "vix_label": "📉 VIX Index",
+        "tnx_label": "🏛️ 10Y Yield",
+        "mood_greed": "🟢 Greed/Calm",
+        "mood_fear": "🟡 Anxiety/Volatile",
+        "mood_panic": "🔴 Extreme Panic",
+        "macro_alert": "🚨 **Macro Warning**: Systemic risk detected. Stay in cash!"
     }
 }
