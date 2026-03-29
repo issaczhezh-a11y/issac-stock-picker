@@ -3,14 +3,15 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
-from lang_config import LANG  # 🎯 关键：引入刚才创建的字典
+from lang_config import LANG 
 
-# --- 1. 初始化设置 ---
+# --- 1. 设置 ---
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
 st.title(t["title"])
 
+# 自动同步展示列
 WHITE_LIST = ["Symbol", "Price", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "Debt%", "Short%", "Upside", "Match"]
 
 # --- 2. 侧边栏 ---
@@ -25,7 +26,7 @@ st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t["scan_btn"])
 
-# --- 3. 分析引擎 ---
+# --- 3. 引擎 ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -34,20 +35,28 @@ def get_analysis(s):
         inf = tk.info
         p = h['Close'].iloc[-1]
         m200_s = h['Close'].rolling(200).mean()
+        m200_val = m200_s.iloc[-1]
         
-        peg = inf.get('pegRatio')
-        if peg is None or peg == 0: peg = inf.get('trailingPegRatio', 0)
+        # 核心数据抓取与计算
+        peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         target = inf.get('targetMeanPrice')
         upside = ((target / p) - 1) * 100 if target and p else 0
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
         
+        # 🎯 新增三大功能计算
+        rev_growth = (inf.get('revenueGrowth') or 0) * 100
+        m_cap = inf.get('marketCap', 1)
+        fcf_yield = (inf.get('freeCashflow', 0) / m_cap) * 100
+        stop_loss = m200_val * 0.97 # 缓冲 3%
+        
         ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
-            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_s.iloc[-1], 2), "P/E": inf.get('forwardPE', 0), 
+            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_val, 2), "P/E": inf.get('forwardPE', 0), 
             "PEG": round(peg, 4), "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), 
             "Short%": f"{(inf.get('shortPercentOfFloat') or 0)*100:.1f}%", "Upside": f"{upside:+.1f}%", "Match": "✅" if ok else "❌",
-            "_p": p, "_m": m200_s.iloc[-1], "_h": h, "_m_s": m200_s, "_target": target, "_up_val": upside, "_inst": inst,
+            "_p": p, "_m": m200_val, "_h": h, "_m_s": m200_s, "_target": target, "_up_val": upside, "_inst": inst,
+            "_rev_g": rev_growth, "_fcf_y": fcf_yield, "_sl": stop_loss,
             "_sum": inf.get('longBusinessSummary', "N/A"), "_ind": inf.get('industry', "N/A")
         }
     except: return None
@@ -69,29 +78,43 @@ def render_report(s):
         st.write(f"**{t['industry']}**: `{s['_ind']}`")
         st.write(f"**{t['summary']}**: {s['_sum'][:800]}...")
         st.info(t['moat_elite'] if s['ROE%'] > 35 else (t['moat_wide'] if s['ROE%'] > 18 else t['moat_narrow']))
+
         st.markdown("---")
+        # 🎯 核心财务与新增成长动能
+        st.markdown(f"### {t['growth_title']}")
+        g1, g2, g3 = st.columns(3)
+        g1.metric(t['cagr_label'], f"{s['_rev_g']:.1f}%", delta="High Growth" if s['_rev_g'] > 15 else None)
+        g2.metric(t['fcf_yield_label'], f"{s['_fcf_y']:.2f}%", delta="Cash Cow" if s['_fcf_y'] > 5 else None)
+        g3.metric("FCF", f"${s['FCF$B']}B")
+
         st.markdown(f"### {t['fin_title']}")
-        c1, c2, c3 = st.columns(3)
-        c1.metric("PEG", s['PEG'], delta="Value" if s['PEG'] < 0.7 else None)
+        c1, c2 = st.columns(2)
+        c1.metric("PEG", s['PEG'])
         c2.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=s['Upside'])
-        c3.metric("FCF", f"${s['FCF$B']}B")
+        
         d_status = t['debt_healthy'] if s['Debt%'] < 40 else (t['debt_mid'] if s['Debt%'] < 100 else t['debt_high'])
         st.write(t['debt_audit'].format(val=s['Debt%'], status=d_status))
         st.write(t['upside_desc'].format(target=s['_target'], upside=s['Upside']))
+
         st.markdown("---")
+        # 🎯 筹码与智能止损
         st.markdown(f"### {t['risk_title']}")
         r1, r2 = st.columns(2)
         inst_msg = t['inst_high'].format(inst=s['_inst']) if s['_inst'] > 75 else t['inst_mid'].format(inst=s['_inst'])
         r1.success(t['chip_dist'].format(msg=inst_msg, sh=s['Short%']))
         if s['_p'] < s['_m']: r2.error(t['trend_bear'])
         else: r2.success(t['trend_bull'])
+
+        st.warning(f"🛡️ **{t['stop_loss_label']}**: `${round(s['_sl'], 2)}`")
+        st.caption(t['stop_loss_note'])
+
         st.divider()
         score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0) + (1 if s['_up_val'] > 15 else 0)
         v_idx = min(score, 3)
         st.success(f"### {t['verdict_title']}：{t['verdicts'][v_idx]}")
         st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
 
-# --- 4. 主逻辑 ---
+# --- 4. 逻辑流 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
