@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 终极深度智库 (v44.0)
+# lang_config.py - Issac Terminal 终极补全智库 (v45.0)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -11,15 +11,16 @@ LANG = {
         "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
         "rs_title": "⚔️ 相对强度 (RS) 动能对比 (vs SPY)",
         "rs_label_spy": "标普 500 (SPY)",
-        "rs_desc_leader": "🔥 **领头羊 (Leader)**：近3个月超越大盘 `{diff:.1f}%`。",
-        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：近3个月落后大盘 `{diff:.1f}%`。",
+        "rs_desc_leader": "🔥 **领头羊 (Leader)**：表现超越大盘 `{diff:.1f}%`。",
+        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：表现落后大盘 `{diff:.1f}%`。",
         "earnings_radar_title": "🚦 财报胜率与盈利预测雷达",
         "next_earn_label": "📅 **下个财报日**: `{date}` (约 `{days}` 天后)",
         "prev_earn_label": "📊 **上季财报回顾 ({date})**",
         "eps_vs_est": "EPS 实测: `{act}` vs 预期: `{est}` ➔ 惊喜度: {surp}%",
         "moat_title": "🏰 维度一：商业模式与护城河透视",
+        "industry": "细分行业", "summary": "业务简介",
         "moat_elite": "💎 **评级：顶级 (Elite)**。极高 ROE 意味着强大的定价权。",
-        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量极高。",
+        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
         "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
         "fin_title": "🏛️ 维度二：盈利质量、现金与债务审计",
         "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (TTM) vs **{prev}%** (上年)。",
@@ -29,7 +30,8 @@ LANG = {
         "pe_percentile_label": "· **估值水位**: 当前 P/E 处于过去一年 **{val}%** 分位 ({status})。",
         "upside_desc": "· **上涨空间**: 分析师预期均价 **${target}**，潜力 **{upside}**。",
         "debt_healthy": "🟢 财务极其稳健", "debt_mid": "🟡 杠杆适中", "debt_high": "🔴 风险偏高",
-        "risk_title": "🚩 维度三：筹码博弈、趋势与风险预警",
+        "growth_title": "📉 维度三：成长动能与现金效率",
+        "risk_title": "🚩 维度四：筹码博弈、趋势与风险预警",
         "inst_label": "✅ **筹码分布**：机构持仓达 **{inst:.1f}%**。{msg}",
         "trend_bear": "❌ **趋势雷达**：股价处于 MA200 下方，多头动能瓦解。",
         "trend_bull": "📈 **趋势雷达**：股价站稳 MA200 上方，多头行情确立。",
@@ -58,6 +60,7 @@ LANG = {
         "prev_earn_label": "📊 **Last Earnings ({date})**",
         "eps_vs_est": "Act: `{act}` vs Est: `{est}` ➔ Surprise: {surp}%",
         "moat_title": "🏰 Pillar I: Business Model & Moat Insight",
+        "industry": "Industry", "summary": "Summary",
         "moat_elite": "💎 **Rating: Elite**. Exceptional ROE dominance.",
         "moat_wide": "🛡️ **Rating: Wide**. Mature barriers with high quality.",
         "moat_narrow": "🚧 **Rating: Narrow**. stiff competition detected.",
