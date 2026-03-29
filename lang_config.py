@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 智库文案库 (v40.0)
+# lang_config.py - Issac Terminal 终极智库文案 (v41.0)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -6,46 +6,39 @@ LANG = {
         "sidebar_header": "⚙️ 专家级筛选参数",
         "pe_label": "最高 P/E", "peg_label": "最高 PEG", "roe_label": "最低 ROE %", "fcf_label": "最低 FCF $B",
         "scan_range": "📊 批量扫描范围", "scan_btn": "开始批量扫描", "match_only": "🔍 只看符合条件的股票",
-        "snapshot_title": "📊 核心参数快照", "report_title": "Issac 级深度投资研报 (Confidential)",
-        
+        "snapshot_title": "📊 核心参数快照", "report_title": "Issac 级深度投资研报 (Highly Confidential)",
         "chart_title": "📈 股价与 200 日均线 (MA200) 趋势对比",
         "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
-        
         "rs_title": "⚔️ 相对强度 (RS) 动能博弈",
         "rs_label_spy": "标普 500 (SPY)",
-        "rs_desc_leader": "🔥 **领头羊 (Leader)**：表现超越大盘 `{diff:.1f}%`。",
-        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：表现落后大盘 `{diff:.1f}%`。",
-        
+        "rs_desc_leader": "🔥 **领头羊 (Leader)**：表现超越大盘 `{diff:.1f}%`。机构资金流入明显。",
+        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：表现落后大盘 `{diff:.1f}%`。动能较弱。",
         "earnings_radar_title": "🚦 财报与盈利预测雷达",
         "next_earn_label": "· **下个财报日**: `{date}` (约 `{days}` 天后)",
         "prev_earn_label": "· **上季财报回顾**: 发布于 `{date}`",
         "eps_vs_est": "· **EPS 实测**: `{act}` (实际) vs `{est}` (预期) ➔ **惊喜度: {surp}%**",
-        
-        "moat_title": "🏰 维度一：商业模式与护城河深度透视",
+        "moat_title": "🏰 维度一：商业模式与护城河透视",
         "moat_elite": "💎 **评级：顶级 (Elite)**。极高 ROE 意味着强大的定价权。",
-        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量稳健。",
-        "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
-        
-        "fin_title": "🏛️ 维度二：盈利质量、现金与债务审计",
+        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
+        "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕长期利润。",
+        "fin_title": "🏛️ 维度二：盈利质量与财务安全性审计",
+        "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (TTM) vs **{prev}%** (上年)。",
         "cash_label": "· **现金储备**: **${val}B** (Total Cash)",
         "debt_val_label": "· **债务总额**: **${val}B** (Total Debt)",
-        "consistency_label": "· **ROE 稳定性**: **{curr}%** (当前) vs **{prev}%** (上年)。",
         "debt_audit": "· **杠杆审计**: 负债权益比 **{val}%** — {status}",
         "upside_desc": "· **上涨空间**: 分析师预期均价 **${target}**，潜在空间 **{upside}**。",
         "pe_percentile_label": "· **估值水位**: 当前 P/E 处于过去一年 **{val}%** 分位 ({status})。",
-        
         "debt_healthy": "🟢 财务极其稳健", "debt_mid": "🟡 杠杆适中", "debt_high": "🔴 风险偏高",
         "growth_title": "📉 维度三：成长动能与现金含量",
-        "risk_title": "🚩 维度四：筹码博弈与风控预警",
+        "risk_title": "🚩 维度四：筹码博弈与风险预警",
         "inst_label": "✅ **筹码分布**：机构持仓达 **{inst:.1f}%**。{msg}",
         "trend_bear": "❌ **趋势雷达**：股价处于 MA200 下方，多头动能瓦解。",
         "trend_bull": "📈 **趋势雷达**：股价站稳 MA200 上方，多头行情确立。",
         "stop_loss_label": "建议离场位 (基于 MA200)",
         "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。",
-        
         "verdict_title": "🏆 Issac 级终极研判",
         "verdicts": ["避险 (C)","观望 (B)","建仓 (A)","重仓 (A+)"],
-        "strategies": ["⚠️ 趋势极弱，场外等候。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，分批布局。","🔥 极品资产，坚决持有！"],
+        "strategies": ["⚠️ 趋势极弱，场外等候。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，分批布局。","🔥 极品资产，量价齐飞，坚决持有！"],
         "strategy_label": "💡 策略"
     },
     "EN": {
@@ -55,33 +48,27 @@ LANG = {
         "pe_label": "Max P/E", "peg_label": "Max PEG", "roe_label": "Min ROE %", "fcf_label": "Min FCF $B",
         "scan_range": "📊 Auto-Scan Range", "scan_btn": "Start Batch Scan", "match_only": "🔍 Show Matches Only",
         "snapshot_title": "📊 Core Metrics Snapshot", "report_title": "Issac Level Deep Report (Confidential)",
-        
         "chart_title": "📈 Price vs 200D Moving Average (MA200)",
         "chart_close": "Close Price", "chart_ma200": "MA200 Line", "chart_date": "Date",
-        
         "rs_title": "⚔️ Relative Strength (RS) Momentum",
         "rs_label_spy": "S&P 500 (SPY)",
         "rs_desc_leader": "🔥 **Leader**: Outperformed S&P 500 by `{diff:.1f}%`。",
         "rs_desc_laggard": "🐌 **Laggard**: Underperformed S&P 500 by `{diff:.1f}%`。",
-        
         "earnings_radar_title": "🚦 Earnings Analytics Radar",
         "next_earn_label": "· **Next Earnings**: `{date}` (In `{days}` days)",
         "prev_earn_label": "· **Last Earnings**: Reported on `{date}`",
         "eps_vs_est": "· **EPS Performance**: `{act}` (Act) vs `{est}` (Est) ➔ **Surprise: {surp}%**",
-        
         "moat_title": "🏰 Pillar I: Business Model & Moat Insight",
         "moat_elite": "💎 **Rating: Elite**. Exceptional ROE indicates strong dominance.",
         "moat_wide": "🛡️ **Rating: Wide**. Mature barriers with high earnings quality.",
         "moat_narrow": "🚧 **Rating: Narrow**. Stiff competition; monitor margins.",
-        
         "fin_title": "🏛️ Pillar II: Fundamentals & Financial Safety",
+        "consistency_label": "· **ROE Stability Audit**: **{curr}%** (TTM) vs **{prev}%** (Ref).",
         "cash_label": "· **Cash Position**: **${val}B** (Total Cash)",
         "debt_val_label": "· **Total Indebtedness**: **${val}B** (Total Debt)",
-        "consistency_label": "· **ROE Stability Audit**: **{curr}%** (TTM) vs **{prev}%** (Ref).",
         "debt_audit": "· **Debt Audit**: D/E Ratio **{val}%** — {status}",
         "upside_desc": "· **Upside**: Analyst target **${target}**, potential gain **{upside}**。",
         "pe_percentile_label": "· **Valuation**: Current P/E is at **{val}%** percentile of the last year ({status})。",
-        
         "debt_healthy": "🟢 Extremely Healthy", "debt_mid": "🟡 Moderate Leverage", "debt_high": "🔴 High Risk",
         "growth_title": "📉 Pillar III: Growth & Cash Flow",
         "risk_title": "🚩 Pillar IV: Sentiment & Risk Radar",
@@ -90,7 +77,6 @@ LANG = {
         "trend_bull": "📈 **Trend Radar**: Price above MA200 (Bullish)。",
         "stop_loss_label": "Exit Target (MA200 Based)",
         "stop_loss_note": "Note: Buffer set at 3% below MA200.",
-        
         "verdict_title": "🏆 Issac Level Verdict",
         "verdicts": ["Wait (C)", "Hold (B)", "Accumulate (A)", "STRONG CONVICTION (A+)"],
         "strategies": ["Wait for signals.", "Monitor only.", "Accumulate on dips.", "Strong conviction hold."],
