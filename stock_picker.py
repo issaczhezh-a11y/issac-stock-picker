@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 from lang_config import LANG 
 
-# --- 1. 设置 ---
+# --- 1. 初始化设置 ---
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
@@ -26,7 +26,7 @@ st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t["scan_btn"])
 
-# --- 3. 引擎 ---
+# --- 3. 分析引擎 ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -37,14 +37,14 @@ def get_analysis(s):
         m200_s = h['Close'].rolling(200).mean()
         m200_val = m200_s.iloc[-1]
         
-        # 核心数据抓取与计算
+        # 数据抓取
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         target = inf.get('targetMeanPrice')
         upside = ((target / p) - 1) * 100 if target and p else 0
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
         
-        # 🎯 新增三大功能计算
+        # 三大增强指标
         rev_growth = (inf.get('revenueGrowth') or 0) * 100
         m_cap = inf.get('marketCap', 1)
         fcf_yield = (inf.get('freeCashflow', 0) / m_cap) * 100
@@ -62,9 +62,11 @@ def get_analysis(s):
     except: return None
 
 def render_report(s):
+    # 1. 参数展示
     st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
+    # 2. 趋势图
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t['chart_close'], line=dict(color='#00d1ff', width=2.5)))
     fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t['chart_ma200'], line=dict(color='#ffaa00', width=2, dash='dash')))
@@ -74,47 +76,57 @@ def render_report(s):
     st.plotly_chart(fig, use_container_width=True)
 
     with st.expander(f"📜 {s['Symbol']} - {t['report_title']}", expanded=True):
+        # 护城河
         st.markdown(f"### {t['moat_title']}")
         st.write(f"**{t['industry']}**: `{s['_ind']}`")
         st.write(f"**{t['summary']}**: {s['_sum'][:800]}...")
         st.info(t['moat_elite'] if s['ROE%'] > 35 else (t['moat_wide'] if s['ROE%'] > 18 else t['moat_narrow']))
 
         st.markdown("---")
-        # 🎯 核心财务与新增成长动能
+        # 成长动能
         st.markdown(f"### {t['growth_title']}")
         g1, g2, g3 = st.columns(3)
         g1.metric(t['cagr_label'], f"{s['_rev_g']:.1f}%", delta="High Growth" if s['_rev_g'] > 15 else None)
         g2.metric(t['fcf_yield_label'], f"{s['_fcf_y']:.2f}%", delta="Cash Cow" if s['_fcf_y'] > 5 else None)
         g3.metric("FCF", f"${s['FCF$B']}B")
 
+        # 财务评价
         st.markdown(f"### {t['fin_title']}")
         c1, c2 = st.columns(2)
         c1.metric("PEG", s['PEG'])
         c2.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=s['Upside'])
-        
         d_status = t['debt_healthy'] if s['Debt%'] < 40 else (t['debt_mid'] if s['Debt%'] < 100 else t['debt_high'])
         st.write(t['debt_audit'].format(val=s['Debt%'], status=d_status))
         st.write(t['upside_desc'].format(target=s['_target'], upside=s['Upside']))
 
         st.markdown("---")
-        # 🎯 筹码与智能止损
+        # 风险与风控
         st.markdown(f"### {t['risk_title']}")
         r1, r2 = st.columns(2)
         inst_msg = t['inst_high'].format(inst=s['_inst']) if s['_inst'] > 75 else t['inst_mid'].format(inst=s['_inst'])
         r1.success(t['chip_dist'].format(msg=inst_msg, sh=s['Short%']))
-        if s['_p'] < s['_m']: r2.error(t['trend_bear'])
+        if s['Price'] < s['MA200']: r2.error(t['trend_bear'])
         else: r2.success(t['trend_bull'])
 
         st.warning(f"🛡️ **{t['stop_loss_label']}**: `${round(s['_sl'], 2)}`")
         st.caption(t['stop_loss_note'])
 
         st.divider()
-        score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0) + (1 if s['_up_val'] > 15 else 0)
-        v_idx = min(score, 3)
-        st.success(f"### {t['verdict_title']}：{t['verdicts'][v_idx]}")
-        st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
+        # 🎯 核心逻辑优化：加入技术面一票否决权
+        base_score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_up_val'] > 15 else 0)
+        
+        # 如果价格低于止损位（均线下方缓冲位），强制锁定评级
+        if s['Price'] < s['_sl']:
+            final_v = 1 # 观望/持有
+            st.error(f"### {t['verdict_title']}：{t['verdicts'][final_v]} (Momentum Broken)")
+            st.error("🚨 **Issac Risk Warning**: 公司基本面虽强，但股价已跌破关键防御位（MA200）。目前处于空头趋势，A/A+ 评级已暂时锁定。建议等待重回均线上方。")
+        else:
+            trend_score = 1 if s['Price'] > s['MA200'] else 0
+            final_v = min(base_score + trend_score, 3)
+            st.success(f"### {t['verdict_title']}：{t['verdicts'][final_v]}")
+            st.info(f"💡 {t['strategy_label']}：{t['strategies'][final_v]}")
 
-# --- 4. 逻辑流 ---
+# --- 4. 主逻辑 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
