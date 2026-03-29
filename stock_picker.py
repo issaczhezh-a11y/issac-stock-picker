@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import pytz
 
-# --- 1. 终极双语字典 (涵盖所有研报文案) ---
+# --- 1. 双语字典 ---
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端", "search_label": "🔍 个股透视 (回车搜索)",
@@ -66,6 +66,9 @@ lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizonta
 t = LANG[lang_choice]
 st.title(t["title"])
 
+# 显式定义白名单列
+WHITE_LIST = ["Symbol", "Price", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "Debt%", "Short%", "Upside", "Match"]
+
 # --- 2. 侧边栏 ---
 st.sidebar.header(t["sidebar_header"])
 search_ticker = st.sidebar.text_input(t["search_label"], "").upper().strip()
@@ -94,10 +97,17 @@ def get_analysis(s):
         upside = ((target / p) - 1) * 100 if target and p else 0
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
         
-        ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 <= (inf.get('pegRatio') or 0) < t_peg and roe > m_roe and fcf > m_fcf)
+        # 🎯 修复 PEG：尝试抓取多个可能的 Key，防止全部显示为 0
+        peg = inf.get('pegRatio')
+        if peg is None or peg == 0:
+            peg = inf.get('trailingPegRatio', 0)
+        
+        pe = inf.get('forwardPE', 0)
+        
+        ok = (0 < pe < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
-            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_series.iloc[-1], 2), "P/E": inf.get('forwardPE', 0), 
-            "PEG": inf.get('pegRatio', 0), "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), 
+            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_series.iloc[-1], 2), "P/E": pe, 
+            "PEG": peg, "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), 
             "Short%": f"{(inf.get('shortPercentOfFloat') or 0)*100:.1f}%", "Upside": f"{upside:+.1f}%", "Match": "✅" if ok else "❌",
             "_p": p, "_m": m200_series.iloc[-1], "_h": h, "_m_s": m200_series, "_target": target, "_up_val": upside, "_inst": inst,
             "_sum": inf.get('longBusinessSummary', "N/A"), "_ind": inf.get('industry', "N/A")
@@ -106,8 +116,8 @@ def get_analysis(s):
 
 def render_report(s):
     st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
-    clean_cols = ["Symbol", "Price", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "Debt%", "Short%", "Upside", "Match"]
-    st.dataframe(pd.DataFrame([s])[clean_cols], use_container_width=True, hide_index=True)
+    # 🎯 强制过滤：只展示白名单列
+    st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t['chart_close'], line=dict(color='#00d1ff', width=2.5)))
@@ -171,10 +181,12 @@ if scan_btn:
 if 'batch_res' in st.session_state:
     st.divider()
     df = pd.DataFrame(st.session_state.batch_res)
-    m_df = df[df["Match"].str.contains("✅")]
+    # 🎯 批量结果也强制过滤
+    m_df = df[df["Match"].str.contains("✅")][WHITE_LIST]
+    
     if not m_df.empty:
         st.subheader("🏙️ Batch Scan Results")
         sel = st.selectbox("Select Stock:", m_df["Symbol"].tolist())
         target_s = df[df["Symbol"] == sel].iloc[0]
         render_report(target_s)
-    st.dataframe(m_df if st.checkbox(t["match_only"], value=True) else df, use_container_width=True, hide_index=True)
+    st.dataframe(m_df if st.checkbox(t["match_only"], value=True) else df[WHITE_LIST], use_container_width=True, hide_index=True)
