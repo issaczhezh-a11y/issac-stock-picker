@@ -6,13 +6,12 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 from lang_config import LANG 
 
-# --- 1. 初始化设置 ---
+# --- 1. 设置 ---
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
 st.title(t["title"])
 
-# 顶层快照白名单
 WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "Inst%", "P/E", "PEG", "Match"]
 
 # --- 2. 侧边栏 ---
@@ -25,7 +24,25 @@ st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t.get("scan_range"), ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t.get("scan_btn"))
 
-# --- 3. 分析引擎 (强制数据抓取模式) ---
+# --- 3. 宏观风控引擎 ---
+def get_macro_radar():
+    try:
+        vix = yf.Ticker("^VIX").history(period="1d")['Close'].iloc[-1]
+        tnx = yf.Ticker("^TNX").history(period="1d")['Close'].iloc[-1]
+        spy_h = yf.Ticker("SPY").history(period="1y")
+        spy_p = spy_h['Close'].iloc[-1]
+        spy_ma200 = spy_h['Close'].rolling(200).mean().iloc[-1]
+        
+        if vix > 28 or spy_p < spy_ma200 * 0.98:
+            mood, status = "mood_panic", "CRASH"
+        elif vix > 21:
+            mood, status = "mood_fear", "CAUTION"
+        else:
+            mood, status = "mood_greed", "BULL"
+        return {"vix": round(vix, 2), "tnx": round(tnx, 2), "mood": mood, "status": status}
+    except: return None
+
+# --- 4. 分析引擎 ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -35,27 +52,27 @@ def get_analysis(s):
         p = h['Close'].iloc[-1]
         m200_val = h['Close'].rolling(200).mean().iloc[-1]
         
-        # 基础数据
+        # 数据抓取
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
         cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
         
-        # 估值分位
+        # 估值水位
         pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
         pe_pct = "N/A"
         try:
-            pe_pct = round(( (h['Close'] / (inf.get('trailingEps', 1))) < pe_curr ).mean() * 100, 1)
+            hist_pe = h['Close'] / (inf.get('trailingEps', 1))
+            pe_pct = round((hist_pe < pe_curr).mean() * 100, 1)
         except: pass
 
-        # 财报抓取逻辑
+        # 财报日期暴力抓取
         n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "0.0"
         try:
             cal = tk.calendar
             if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
                 c_date = cal.loc['Earnings Date'].iloc[0]
-                n_date = c_date.strftime('%Y-%m-%d')
-                n_days = (pd.to_datetime(c_date).replace(tzinfo=None) - datetime.now()).days
+                n_date, n_days = c_date.strftime('%Y-%m-%d'), (pd.to_datetime(c_date).replace(tzinfo=None) - datetime.now()).days
             
             e_dates = tk.get_earnings_dates(limit=8)
             if e_dates is not None and not e_dates.empty:
@@ -101,7 +118,18 @@ def get_analysis(s):
     except: return None
 
 def render_report(s):
-    # 🎯 计算 Issac 综合分 (0-100)
+    # --- 1. 宏观雷达部署 ---
+    macro = get_macro_radar()
+    if macro:
+        st.markdown(f"### {t.get('macro_title')}")
+        m1, m2, m3 = st.columns([1, 1, 2])
+        m1.metric(t.get("vix_label"), macro['vix'])
+        m2.metric(t.get("tnx_label"), f"{macro['tnx']}%")
+        m3.subheader(t.get(macro['mood']))
+        if macro['status'] == "CRASH":
+            st.error(t.get("macro_alert"))
+    
+    # --- 2. 综合评分与快照 ---
     score = 0
     score += 25 if s['Price'] > s['MA200'] else 0
     score += 25 if s['ROE%'] > 25 else (15 if s['ROE%'] > 15 else 0)
@@ -109,16 +137,16 @@ def render_report(s):
     score += 15 if s['_s_ret'] > s['_spy_ret'] else 0
     score += 15 if s['Debt%'] < 50 else (5 if s['Debt%'] < 100 else 0)
 
-    # 1. 快照与综合分
+    st.divider()
     c_left, c_right = st.columns([3, 1])
     with c_left:
         st.markdown(f"## {t.get('snapshot_title')} - {s['Symbol']}")
     with c_right:
-        st.metric(t.get('score_label'), f"{score}/100", delta=f"{score-50 if score > 50 else score-50}")
+        st.metric(t.get('score_label'), f"{score}/100", delta=f"{score-50}")
 
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # 2. 趋势与 RS
+    # --- 3. 趋势图与对比 ---
     c1, c2 = st.columns([2, 1])
     with c1:
         fig = go.Figure()
@@ -131,7 +159,7 @@ def render_report(s):
         fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig_rs, use_container_width=True)
     
-    # 3. 财报雷达
+    # --- 4. 财报雷达 ---
     st.markdown(f"### {t.get('earnings_radar_title')}")
     st.caption(f"🔗 [Yahoo Finance 实时分析入口](https://finance.yahoo.com/quote/{s['Symbol']}/analysis)")
     er1, er2 = st.columns(2)
@@ -142,11 +170,11 @@ def render_report(s):
         st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
         st.write(t.get('eps_vs_est', 'EPS').format(act=s['_p_act'], est=s['_p_est'], surp=f":{sur_c}[{surp_v}]"))
 
-    # 4. 智库报告
+    # --- 5. 详细研报 ---
     st.markdown(f"# {t.get('report_title')}")
     with st.expander(t.get('moat_title'), expanded=True):
-        moat_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
-        st.info(f"**{t.get('industry')}**: `{s['_ind']}` | {moat_txt}")
+        m_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
+        st.info(f"**{t.get('industry', 'Industry')}**: `{s['_ind']}` | {m_txt}")
         st.write(s['_sum'][:1200] + "...")
     with st.expander(t.get('fin_title'), expanded=True):
         f1, f2, f3 = st.columns(3)
@@ -158,24 +186,29 @@ def render_report(s):
         st.write(t.get('consistency_label', 'ROE').format(curr=s['ROE%'], prev=s['_prev_roe']))
         d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
         st.write(t.get('debt_audit').format(val=s['Debt%'], status=d_st))
-        st.write(t.get('upside_desc').format(target=s['_target'] if s['_target'] else 'N/A', upside=s['Upside']))
         st.write(t.get('pe_percentile_label').format(val=s['_pe_pct'], status="Normal"))
     with st.expander(t.get('risk_title'), expanded=True):
         r1, r2 = st.columns(2)
-        r1.success(t.get('inst_label').format(inst=s['_inst'], msg="Institutional Inflow detected" if s['_inst']>70 else "Balanced"))
+        r1.success(t.get('inst_label').format(inst=s['_inst'], msg="Confidence High" if s['_inst']>70 else "Balanced"))
         if s['Price'] < s['MA200']: r2.error(t.get('trend_bear'))
         else: r2.success(t.get('trend_bull'))
         st.warning(f"🛡️ **{t.get('stop_loss_label')}**: `${round(s['_m']*0.97, 2)}` | {t.get('stop_loss_note')}")
+    
+    # --- 6. 终极研判 (加入宏观否决权) ---
     st.divider()
-    score_v = 1 if s['Price'] < s['MA200']*0.97 else (3 if score > 75 else (2 if score > 50 else 1))
-    st.success(f"## {t.get('verdict_title')}：{t.get('verdicts')[score_v]}")
-    st.info(f"💡 {t.get('strategy_label')}：{t.get('strategies')[score_v]}")
+    if macro and macro['status'] == "CRASH":
+        st.error(f"## {t.get('verdict_title')}：{t.get('verdicts')[0]} (Macro Exit)")
+        st.warning("🚨 **风控干预**：大盘已进入恐慌模式（SPY 破线或 VIX 爆表），目前不建议持有任何个股。")
+    else:
+        v_idx = 1 if s['Price'] < s['MA200']*0.97 else (3 if score > 75 else (2 if score > 50 else 1))
+        st.success(f"## {t.get('verdict_title')}：{t.get('verdicts')[v_idx]}")
+        st.info(f"💡 {t.get('strategy_label')}：{t.get('strategies')[v_idx]}")
 
-# --- 4. 主逻辑 ---
+# --- 主逻辑 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
-    else: st.error("Ticker not found. Try MSFT or AAPL to verify data flow.")
+    else: st.error("Ticker not found. Try MSFT or AAPL to verify.")
 
 if scan_btn:
     import urllib.request
@@ -195,8 +228,7 @@ if 'batch_res' in st.session_state:
     df = pd.DataFrame(st.session_state.batch_res)
     m_df = df[df["Match"]=="✅"]
     if not m_df.empty:
-        st.subheader("🏙️ Batch Scan Results")
-        sel = st.selectbox("View Report For:", m_df["Symbol"].tolist())
+        sel = st.selectbox("Select Target:", m_df["Symbol"].tolist())
         target_s = df[df["Symbol"] == sel].iloc[0]
         render_report(target_s)
     st.dataframe(m_df[WHITE_LIST] if not m_df.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
