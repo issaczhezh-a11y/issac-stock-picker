@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 from lang_config import LANG 
 
-# --- 1. 设置 ---
+# --- 1. 初始化 ---
 st.set_page_config(page_title="Issac Terminal Pro", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG.get(lang_choice, LANG["CN"])
@@ -63,7 +63,7 @@ def get_analysis(s):
         cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
         pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
         
-        # 财报抓取 (抗 weekend 逻辑)
+        # 财报抓取
         n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "0.0"
         try:
             cal = tk.calendar
@@ -146,19 +146,19 @@ def render_report(s):
     with c2:
         fig_rs = go.Figure(go.Bar(x=[s['Symbol'], "SPY"], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#444444']))
         fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig_rs, use_container_width=True, help=t.get("rs_help", ""))
+        st.plotly_chart(fig_rs, use_container_width=True) # 🎯 移除这里的 help 参数
 
-    # --- 4. 财报雷达 (修复崩溃点) ---
+    # --- 4. 财报雷达 ---
     st.markdown(f"### {t.get('earnings_radar_title', 'Earnings')}")
     er1, er2 = st.columns(2)
     er1.info(f"📅 **下个财报日**: `{s['_n_e']}` (约 {s['_n_d']} 天后)")
     with er2:
         sur_c = "green" if (isinstance(s['_p_s'], (int, float)) and s['_p_s'] > 0) else "red"
+        # 🎯 移除 st.write 里的 help 参数，改用 f-string 彻底避坑
         st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
-        # 🎯 这里使用了安全的 f-string 而不是脆弱的 .format
-        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]", help=t.get("eps_help", ""))
+        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]")
 
-    # --- 5. 研报内容 (暴力容错) ---
+    # --- 5. 研报内容 ---
     st.markdown(f"# {t.get('report_title', 'Report')}")
     with st.expander(t.get('moat_title', 'Moat'), expanded=True):
         m_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
@@ -169,7 +169,7 @@ def render_report(s):
         f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("fcf_help", ""))
         f2.metric("Indebtedness", f"${s['_debt']:.1f}B", help=t.get("debt_help", ""))
         f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%")
-        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)", help=t.get("roe_help", ""))
+        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)")
         d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
         st.write(f"杠杆审计: 负债比 **{s['Debt%']}%** — {d_st}")
     with st.expander(t.get('risk_title', 'Risk'), expanded=True):
