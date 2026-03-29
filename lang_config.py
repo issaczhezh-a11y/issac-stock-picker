@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 终极补全智库 (v45.0)
+# lang_config.py - Issac Terminal 终极补全智库 (v45.1)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
