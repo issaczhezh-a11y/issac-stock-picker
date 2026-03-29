@@ -11,9 +11,10 @@ lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizonta
 t = LANG[lang_choice]
 st.title(t["title"])
 
-WHITE_LIST = ["Symbol", "Price", "Match", "P/E", "PEG", "ROE%", "Short%", "Upside"]
+# 🎯 重新定义白名单：把 MA200, FCF, Debt 全加回来，让快照更完整
+WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "P/E", "PEG", "FCF$B", "Debt%", "Upside", "Match"]
 
-# --- 2. 侧边栏 (修复 scan_range 缺失问题) ---
+# --- 2. 侧边栏 ---
 st.sidebar.header(t["sidebar_header"])
 search_ticker = st.sidebar.text_input(t["search_label"], "").upper().strip()
 st.sidebar.divider()
@@ -23,7 +24,6 @@ m_roe = st.sidebar.number_input(t["roe_label"], value=15.0)
 m_fcf = st.sidebar.number_input(t["fcf_label"], value=0.5)
 
 st.sidebar.divider()
-# 🎯 重新归位的批量选择与按钮
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t["scan_btn"])
 
@@ -38,34 +38,34 @@ def get_analysis(s):
         m200_s = h['Close'].rolling(200).mean()
         m200_val = m200_s.iloc[-1]
         
-        # 基础数据抓取
+        # 基础财务数据抓取
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         target = inf.get('targetMeanPrice')
         upside = ((target / p) - 1) * 100 if target and p else 0
         
-        # 🎯 相对强度 (RS) 计算
+        # 🎯 相对强度 (RS) 逻辑
         spy_tk = yf.Ticker("^GSPC")
         h_3m = tk.history(period="3mo")
         h_spy_3m = spy_tk.history(period="3mo")
-        rs_diff, rs_is_leader = 0, True
+        s_ret, spy_ret, rs_diff, rs_is_l = 0, 0, 0, True
         if len(h_3m) >= 60 and len(h_spy_3m) >= 60:
             s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
             spy_ret = ((h_spy_3m['Close'].iloc[-1] / h_spy_3m['Close'].iloc[0]) - 1) * 100
             rs_diff = s_ret - spy_ret
-            rs_is_leader = rs_diff > 0
+            rs_is_l = rs_diff > 0
 
         # 🎯 财报日期
         cal = tk.calendar
-        days_to_earnings, earn_date = 999, "N/A"
+        e_days, e_date = 999, "N/A"
         if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
             try:
                 ed = cal.loc['Earnings Date'].iloc[0]
-                earn_date = ed.strftime('%Y-%m-%d')
-                days_to_earnings = (ed - pd.Timestamp.now()).days
+                e_date = ed.strftime('%Y-%m-%d')
+                e_days = (ed - pd.Timestamp.now()).days
             except: pass
 
-        # 🎯 历史 ROE 对比
+        # 🎯 历史 ROE
         prev_roe = "N/A"
         try:
             prev_ni = tk.yearly_financials.loc['Net Income'].iloc[1]
@@ -75,13 +75,14 @@ def get_analysis(s):
 
         ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
-            "Symbol": s, "Price": round(p, 2), "Match": "✅" if ok else "❌", "P/E": inf.get('forwardPE', 0), 
-            "PEG": round(peg, 4), "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), 
-            "Short%": f"{(inf.get('shortPercentOfFloat') or 0)*100:.1f}%", "Upside": f"{upside:+.1f}%", 
-            "_p": p, "_m": m200_val, "_h": h, "_m_s": m200_s, "_target": target, "_up_val": upside, 
+            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_val, 2), "Match": "✅" if ok else "❌",
+            "P/E": inf.get('forwardPE', 0), "PEG": round(peg, 4), "ROE%": round(roe, 1), 
+            "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), "Upside": f"{upside:+.1f}%",
+            "Short%": f"{(inf.get('shortPercentOfFloat') or 0)*100:.1f}%",
+            "_p": p, "_m": m200_val, "_h": h, "_m_s": m200_s, "_target": target, "_up_val": upside,
             "_inst": (inf.get('heldPercentInstitutions') or 0) * 100, "_sl": m200_val * 0.97,
-            "_s_ret": s_ret, "_spy_ret": spy_ret, "_rs_diff": rs_diff, "_rs_is_l": rs_is_leader,
-            "_e_days": days_to_earnings, "_e_date": earn_date, "_prev_roe": prev_roe,
+            "_s_ret": s_ret, "_spy_ret": spy_ret, "_rs_diff": rs_diff, "_rs_is_l": rs_is_l,
+            "_e_days": e_days, "_e_date": e_date, "_prev_roe": prev_roe,
             "_ind": inf.get('industry', "N/A"), "_sum": inf.get('longBusinessSummary', "N/A")
         }
     except: return None
@@ -92,10 +93,11 @@ def render_report(s):
         st.error(t['earnings_label'].format(days=s['_e_days'], date=s['_e_date']))
         st.divider()
 
+    # 2. 核心快照展示
     st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # 2. 趋势图
+    # 3. 趋势图
     with st.expander(t['chart_title'], expanded=True):
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t['chart_close'], line=dict(color='#00d1ff', width=2.5)))
@@ -103,7 +105,7 @@ def render_report(s):
         fig.update_layout(template="plotly_dark", height=380, margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
-    # 3. RS 对比柱状图
+    # 4. RS 对比图
     st.markdown(f"### {t['rs_title']}")
     fig_rs = go.Figure(go.Bar(x=[s['Symbol'], t['rs_label_spy']], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#cccccc']))
     fig_rs.update_layout(template="plotly_dark", height=250, margin=dict(l=10, r=10, t=10, b=10))
@@ -111,38 +113,41 @@ def render_report(s):
     if s['_rs_is_l']: st.success(t['rs_desc_leader'].format(diff=s['_rs_diff']))
     else: st.error(t['rs_desc_laggard'].format(diff=abs(s['_rs_diff'])))
 
-    # 4. 深度报告
+    # 5. 深度报告 (修复 KeyError 逻辑)
     with st.expander(t['report_title'], expanded=True):
         st.markdown(f"### {t['moat_title']}")
         st.write(f"**Industry**: `{s['_ind']}` | **Business**: {s['_sum'][:800]}...")
-        st.info(t['moat_elite'] if s['ROE%'] > 35 else (t['moat_wide'] if s['ROE%'] > 18 else t['moat_narrow']))
+        # 🎯 修复点：使用更稳健的 get 方法获取 Key
+        moat_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
+        st.info(moat_txt)
         
         st.markdown(f"#### {t['fin_title']}")
         c1, c2 = st.columns(2)
         c1.metric("PEG Ratio", s['PEG'])
-        c2.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=s['Upside'])
-        st.write(t['consistency_label'].format(curr=s['ROE%'], prev=s['_prev_roe']))
+        c2.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=f"{s['Upside']}")
+        
+        roe_audit_txt = t['consistency_label'].format(curr=s['ROE%'], prev=s['_prev_roe']) if s['_prev_roe'] != "N/A" else f"ROE: {s['ROE%']}%"
+        st.write(roe_audit_txt)
         
         st.markdown("---")
         st.markdown(f"#### {t['risk_title']}")
         r1, r2 = st.columns(2)
-        inst_held = s['_inst']
-        r1.caption(f"Sentiment: Inst Held {inst_held:.1f}% | Short: {s['Short%']}")
+        r1.caption(f"Sentiment: Inst Held {s['_inst']:.1f}% | Short: {s['Short%']}")
         if s['Price'] < s['MA200']: r2.error(t['trend_bear'])
         else: r2.success(t['trend_bull'])
         st.warning(f"🛡️ **{t['stop_loss_label']}**: `${round(s['_sl'], 2)}`")
 
         st.divider()
-        base_score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_up_val'] > 15 else 0)
+        # 评级逻辑
+        base_score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if float(s['Upside'].replace('%','')) > 15 else 0)
         if s['Price'] < s['_sl']:
-            v_idx = 1 # B (观望)
-            st.error(f"### {t['verdict_title']}：{t['verdicts'][v_idx]} (Trend Broken)")
+            st.error(f"### {t['verdict_title']}：{t['verdicts'][1]} (Momentum Broken)")
         else:
             v_idx = min(base_score + (1 if s['Price'] > s['MA200'] else 0), 3)
             st.success(f"### {t['verdict_title']}：{t['verdicts'][v_idx]}")
             st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
 
-# --- 5. 执行 ---
+# --- 主逻辑 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
@@ -165,9 +170,10 @@ if scan_btn:
 if 'batch_res' in st.session_state:
     st.divider()
     df = pd.DataFrame(st.session_state.batch_res)
-    m_df = df[df["Match"]=="✅"][WHITE_LIST]
+    m_df = df[df["Match"]=="✅"]
     if not m_df.empty:
-        sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
+        st.subheader("🏙️ Batch Scan Results")
+        sel = st.selectbox("Select Target:", m_df["Symbol"].tolist())
         target_s = df[df["Symbol"] == sel].iloc[0]
         render_report(target_s)
-    st.dataframe(m_df, use_container_width=True, hide_index=True)
+    st.dataframe(m_df[WHITE_LIST] if not m_df.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
