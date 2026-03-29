@@ -6,27 +6,27 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 from lang_config import LANG 
 
-# --- 1. 初始化 ---
+# --- 1. 设置 ---
 st.set_page_config(page_title="Issac Terminal Pro", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
-t = LANG[lang_choice]
+t = LANG.get(lang_choice, LANG["CN"])
 st.title(t.get("title", "Issac Terminal"))
 
 WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "Inst%", "P/E", "PEG", "Match"]
 
-# --- 2. 侧边栏 (加入提示框) ---
+# --- 2. 侧边栏 ---
 st.sidebar.header(t.get("sidebar_header", "Settings"))
 search_ticker = st.sidebar.text_input(t.get("search_label", "Ticker"), "").upper().strip()
 st.sidebar.divider()
-t_pe = st.sidebar.number_input(t.get("pe_label"), value=25.0, help=t.get("pe_help"))
-t_peg = st.sidebar.number_input(t.get("peg_label"), value=1.2, help=t.get("peg_help"))
-m_roe = st.sidebar.number_input(t.get("roe_label"), value=15.0, help=t.get("roe_help"))
-m_fcf = st.sidebar.number_input(t.get("fcf_label"), value=0.5, help=t.get("fcf_help"))
+t_pe = st.sidebar.number_input(t.get("pe_label", "Max PE"), value=25.0, help=t.get("pe_help", ""))
+t_peg = st.sidebar.number_input(t.get("peg_label", "Max PEG"), value=1.2, help=t.get("peg_help", ""))
+m_roe = st.sidebar.number_input(t.get("roe_label", "Min ROE"), value=15.0, help=t.get("roe_help", ""))
+m_fcf = st.sidebar.number_input(t.get("fcf_label", "Min FCF"), value=0.5, help=t.get("fcf_help", ""))
 st.sidebar.divider()
-idx_mode = st.sidebar.selectbox(t.get("scan_range"), ["S&P 500", "Nasdaq 100"])
-scan_btn = st.sidebar.button(t.get("scan_btn"))
+idx_mode = st.sidebar.selectbox(t.get("scan_range", "Scan Range"), ["S&P 500", "Nasdaq 100"])
+scan_btn = st.sidebar.button(t.get("scan_btn", "Scan"))
 
-# --- 3. 引擎逻辑 ---
+# --- 3. 宏观风控引擎 ---
 def get_macro_radar():
     try:
         v_h = yf.Ticker("^VIX").history(period="5d")
@@ -47,6 +47,7 @@ def get_macro_radar():
         return {"vix": round(vix, 2), "tnx": round(tnx, 2), "mood": mood, "status": status, "score": m_score, "logic": logic_key}
     except: return None
 
+# --- 4. 分析引擎 ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -62,12 +63,7 @@ def get_analysis(s):
         cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
         pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
         
-        pe_pct = "N/A"
-        try:
-            pe_pct = round(( (h['Close'] / (inf.get('trailingEps', 1))) < pe_curr ).mean() * 100, 1)
-        except: pass
-
-        # 财报抓取
+        # 财报抓取 (抗 weekend 逻辑)
         n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "0.0"
         try:
             cal = tk.calendar
@@ -94,12 +90,9 @@ def get_analysis(s):
         except: pass
 
         # RS
-        s_ret, spy_ret = 0, 0
-        try:
-            h_3m = tk.history(period="3mo")
-            s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
-            spy_ret = ((yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[-1] / yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[0]) - 1) * 100
-        except: pass
+        h_3m = tk.history(period="3mo")
+        s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
+        spy_ret = ((yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[-1] / yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[0]) - 1) * 100
 
         ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
@@ -107,7 +100,7 @@ def get_analysis(s):
             "P/E": pe_curr, "PEG": round(peg, 4), "ROE%": round(roe, 1), "Inst%": f"{inst:.1f}%",
             "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), "Upside": f"{((inf.get('targetMeanPrice', p)/p)-1)*100:+.1f}%",
             "_p": p, "_m": m200_val, "_h": h, "_m_s": h['Close'].rolling(200).mean(), "_target": inf.get('targetMeanPrice'),
-            "_inst": inst, "_cash": cash, "_debt": debt, "_pe_pct": pe_pct, "_s_ret": s_ret, "_spy_ret": spy_ret,
+            "_inst": inst, "_cash": cash, "_debt": debt, "_pe_pct": 50, "_s_ret": s_ret, "_spy_ret": spy_ret,
             "_n_e": n_date, "_n_d": n_days, "_p_e": p_date, "_p_act": p_act, "_p_est": p_est, "_p_s": p_surp,
             "_prev_roe": prev_roe, "_fcf_m": ((inf.get('freeCashflow', 0) / inf.get('totalRevenue', 1)) * 100),
             "_ind": inf.get('industry', "N/A"), "_sum": inf.get('longBusinessSummary', "N/A")
@@ -118,15 +111,15 @@ def render_report(s):
     # --- 1. 宏观雷达 ---
     macro = get_macro_radar()
     if macro:
-        st.markdown(f"### {t.get('macro_title')}")
+        st.markdown(f"### {t.get('macro_title', 'Macro')}")
         m1, m2, m3, m4 = st.columns([1, 1, 1, 1])
-        m1.metric(t.get("vix_label"), macro['vix'], help=t.get("vix_help"))
-        m2.metric(t.get("tnx_label"), f"{macro['tnx']}%", help=t.get("tnx_help"))
+        m1.metric(t.get("vix_label", "VIX"), macro['vix'], help=t.get("vix_help", ""))
+        m2.metric(t.get("tnx_label", "10Y"), f"{macro['tnx']}%", help=t.get("tnx_help", ""))
         m3.metric("Issac Macro Score", f"{macro['score']}/100")
-        m4.subheader(t.get(macro['mood']))
-        with st.expander(t.get('macro_explainer_title').format(mood=t.get(macro['mood']))):
-            st.write(t.get(macro['logic']))
-            st.info(t.get('macro_val_desc'))
+        m4.subheader(t.get(macro['mood'], ""))
+        with st.expander(t.get('macro_explainer_title', 'Logic').format(mood=t.get(macro['mood'], ""))):
+            st.write(t.get(macro['logic'], ""))
+            st.info(t.get('macro_val_desc', ""))
 
     # --- 2. 评分与快照 ---
     score = 0
@@ -138,63 +131,64 @@ def render_report(s):
 
     st.divider()
     c_left, c_right = st.columns([3, 1])
-    c_left.markdown(f"## {t.get('snapshot_title')} - {s['Symbol']}")
-    c_right.metric(t.get('score_label'), f"{score}/100", delta=f"{score-50}", help=t.get("score_help"))
+    c_left.markdown(f"## {t.get('snapshot_title', 'Snapshot')} - {s['Symbol']}")
+    c_right.metric(t.get('score_label', 'Score'), f"{score}/100", delta=f"{score-50}", help=t.get("score_help", ""))
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # --- 3. 图表与 RS ---
+    # --- 3. 趋势图 ---
     c1, c2 = st.columns([2, 1])
     with c1:
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close'), line=dict(color='#00d1ff', width=2)))
-        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200'), line=dict(color='#ffaa00', width=2, dash='dash')))
+        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close', 'Close'), line=dict(color='#00d1ff', width=2)))
+        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200', 'MA200'), line=dict(color='#ffaa00', width=2, dash='dash')))
         fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
     with c2:
         fig_rs = go.Figure(go.Bar(x=[s['Symbol'], "SPY"], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#444444']))
         fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig_rs, use_container_width=True, help=t.get("rs_help"))
+        st.plotly_chart(fig_rs, use_container_width=True, help=t.get("rs_help", ""))
 
-    # --- 4. 财报雷达 ---
-    st.markdown(f"### {t.get('earnings_radar_title')}")
+    # --- 4. 财报雷达 (修复崩溃点) ---
+    st.markdown(f"### {t.get('earnings_radar_title', 'Earnings')}")
     er1, er2 = st.columns(2)
-    er1.info(t.get('next_earn_label', 'Next: {date}').format(date=s['_n_e'], days=s['_n_d']))
-    sur_c = "green" if (isinstance(s['_p_s'], (int, float)) and s['_p_s'] > 0) else "red"
-    er2.markdown(f"**{t.get('prev_earn_label').format(date=s['_p_e'])}**")
-    er2.write(t.get('eps_vs_est', 'Act: {act}').format(act=s['_p_act'], est=s['_p_est'], surp=f":{sur_c}[{s['_p_s']}]"), help=t.get("eps_help"))
+    er1.info(f"📅 **下个财报日**: `{s['_n_e']}` (约 {s['_n_d']} 天后)")
+    with er2:
+        sur_c = "green" if (isinstance(s['_p_s'], (int, float)) and s['_p_s'] > 0) else "red"
+        st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
+        # 🎯 这里使用了安全的 f-string 而不是脆弱的 .format
+        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]", help=t.get("eps_help", ""))
 
-    # --- 5. 详细研报 ---
-    st.markdown(f"# {t.get('report_title')}")
-    with st.expander(t.get('moat_title'), expanded=True):
+    # --- 5. 研报内容 (暴力容错) ---
+    st.markdown(f"# {t.get('report_title', 'Report')}")
+    with st.expander(t.get('moat_title', 'Moat'), expanded=True):
         m_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
-        st.info(f"**{t.get('industry')}**: `{s['_ind']}` | {m_txt}")
+        st.info(f"**{t.get('industry', 'Industry')}**: `{s['_ind']}` | {m_txt}")
         st.write(s['_sum'][:1200] + "...")
-    with st.expander(t.get('fin_title'), expanded=True):
+    with st.expander(t.get('fin_title', 'Finance'), expanded=True):
         f1, f2, f3 = st.columns(3)
-        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("fcf_help"))
-        f2.metric("Indebtedness", f"${s['_debt']:.1f}B", help=t.get("debt_help"))
+        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("fcf_help", ""))
+        f2.metric("Indebtedness", f"${s['_debt']:.1f}B", help=t.get("debt_help", ""))
         f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%")
-        st.write(t.get('consistency_label', 'ROE').format(curr=s['ROE%'], prev=s['_prev_roe']), help=t.get("roe_help"))
+        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)", help=t.get("roe_help", ""))
         d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
-        st.write(t.get('debt_audit').format(val=s['Debt%'], status=d_st))
-        st.write(t.get('pe_percentile_label').format(val=s['_pe_pct'], status="Normal"), help=t.get("pe_help"))
-    with st.expander(t.get('risk_title'), expanded=True):
+        st.write(f"杠杆审计: 负债比 **{s['Debt%']}%** — {d_st}")
+    with st.expander(t.get('risk_title', 'Risk'), expanded=True):
         r1, r2 = st.columns(2)
-        r1.success(t.get('inst_label').format(inst=s['_inst'], msg="Confidence High"), help=t.get("inst_help"))
-        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear'))
-        else: r2.success(t.get('trend_bull'))
-        st.warning(f"🛡️ **{t.get('stop_loss_label')}**: `${round(s['_m']*0.97, 2)}` | {t.get('stop_loss_note')}")
+        r1.success(f"✅ 机构持仓: **{s['_inst']:.1f}%**", help=t.get("inst_help", ""))
+        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear', 'Bearish'))
+        else: r2.success(t.get('trend_bull', 'Bullish'))
+        st.warning(f"🛡️ **离场参考位**: `${round(s['_m']*0.97, 2)}` (MA200 -3%)")
     
     st.divider()
     v_idx = 1 if s['Price'] < s['MA200']*0.97 or (macro and macro['status'] == "CRASH") else (3 if score > 75 else (2 if score > 50 else 1))
-    st.success(f"## {t.get('verdict_title')}：{t.get('verdicts')[v_idx]}")
-    st.info(f"💡 {t.get('strategy_label')}：{t.get('strategies')[v_idx]}")
+    st.success(f"## {t.get('verdict_title', 'Verdict')}：{t.get('verdicts', ['', '', '', ''])[v_idx]}")
+    st.info(f"💡 {t.get('strategy_label', 'Strategy')}：{t.get('strategies', ['', '', '', ''])[v_idx]}")
 
 # --- 主逻辑 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
-    else: st.error("Ticker not found. Try MSFT to verify.")
+    else: st.error("Ticker not found or Data API error.")
 
 if scan_btn:
     import urllib.request
@@ -215,7 +209,7 @@ if 'batch_res' in st.session_state:
     m_df = df[df["Match"]=="✅"]
     if not m_df.empty:
         st.subheader("🏙️ Batch Scan Results")
-        sel = st.selectbox("Select Target:", m_df["Symbol"].tolist())
+        sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
         target_s = df[df["Symbol"] == sel].iloc[0]
         render_report(target_s)
     st.dataframe(m_df[WHITE_LIST] if not m_df.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
