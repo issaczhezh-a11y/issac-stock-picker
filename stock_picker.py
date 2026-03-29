@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import pytz
 
-# --- 1. 真·全语境多语言字典 ---
+# --- 1. 多语言字典 ---
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端", "search_label": "🔍 个股透视 (回车搜索)",
@@ -18,7 +18,7 @@ LANG = {
         "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
         "moat_title": "🏰 商业模式与护城河透视", "fin_title": "🏛️ 财务与估值空间",
         "risk_title": "🚩 筹码博弈与趋势雷达", "verdict_title": "🏆 终极研判",
-        "strategy_label": "💡 操盘策略",
+        "strategy_label": "💡 操盘策略", "industry": "细分行业", "summary": "业务简介",
         "strategies": ["⚠️ 趋势极弱，场外等候。","⚖️ 缺乏动能，底仓观察。","✅ 趋势向好，逢低建仓。","🔥 极品资产，果断持有！"]
     },
     "EN": {
@@ -32,7 +32,7 @@ LANG = {
         "chart_close": "Closing Price", "chart_ma200": "MA200 Line", "chart_date": "Date",
         "moat_title": "🏰 Business Model & Moat Analysis", "fin_title": "🏛️ Fundamentals & Valuation",
         "risk_title": "🚩 Risk & Trend Radar", "verdict_title": "🏆 Institutional Verdict",
-        "strategy_label": "💡 Strategy",
+        "strategy_label": "💡 Strategy", "industry": "Industry", "summary": "Business Summary",
         "strategies": ["Wait for bottom.", "Monitor only.", "Accumulate on dips.", "High conviction buy."]
     }
 }
@@ -54,50 +54,55 @@ st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t["scan_btn"])
 
-# --- 3. 核心引擎 ---
+# --- 3. 分析引擎 (核心增强：安全获取字段) ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
         h = tk.history(period="1y")
         if len(h) < 200: return None
         inf = tk.info
-        p, m200 = h['Close'].iloc[-1], h['Close'].rolling(200).mean()
-        v_r = ((h['Volume'].iloc[-1] / h['Volume'].iloc[-8:-1].mean()) - 1) * 100
-        pe, peg = inf.get('forwardPE', 0), (inf.get('pegRatio') or inf.get('trailingPegRatio') or 0)
-        roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
-        debt, sh = (inf.get('debtToEquity') or 0), (inf.get('shortPercentOfFloat') or 0)*100
+        p = h['Close'].iloc[-1]
+        m200_series = h['Close'].rolling(200).mean()
+        m200_val = m200_series.iloc[-1]
+        
+        # 🎯 安全获取字段，防止 KeyError
+        pe = inf.get('forwardPE', 0)
+        peg = inf.get('pegRatio') or inf.get('trailingPegRatio') or 0
+        roe = (inf.get('returnOnEquity') or 0) * 100
+        fcf = (inf.get('freeCashflow') or 0) / 1e9
+        debt = inf.get('debtToEquity', 0)
+        sh = (inf.get('shortPercentOfFloat') or 0) * 100
         target = inf.get('targetMeanPrice')
         upside = ((target / p) - 1) * 100 if target and p else 0
         inst_held = (inf.get('heldPercentInstitutions') or 0) * 100
+        
         ok = (0 < pe < target_pe and 0 <= peg < target_peg and roe > min_roe and fcf > min_fcf)
         return {
-            "代码":s, "价格":round(p,2), "MA200":round(m200.iloc[-1],2), "P/E":pe, "PEG":peg, 
-            "ROE%":round(roe,1), "FCF$B":round(fcf,1), "负债%":round(debt,1), 
-            "做空%":f"{sh:.1f}%", "上涨空间":f"{upside:+.1f}%", "结果":"✅ 符合" if ok else "❌ 不符",
-            "_h":h, "_m_series":m200, "_target":target, "_upside":upside, "_inst":inst_held,
-            "_summary":inf.get('longBusinessSummary', "N/A"), "_industry":inf.get('industry', "N/A")
+            "代码": s, "价格": round(p, 2), "MA200": round(m200_val, 2), "P/E": pe, "PEG": peg, 
+            "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "负债%": round(debt, 1), 
+            "做空%": f"{sh:.1f}%", "上涨空间": f"{upside:+.1f}%", "结果": "✅ 符合" if ok else "❌ 不符",
+            "_h": h, "_m_series": m200_series, "_target": target, "_upside": upside, "_inst": inst_held,
+            "_summary": inf.get('longBusinessSummary', "N/A"), 
+            "_industry": inf.get('industry', "N/A") # 🎯 修复关键点
         }
     except: return None
 
 def render_report(s):
-    # 1. 顶部快照
+    # 1. 顶部参数快照
     st.subheader(f"{t['snapshot_title']} - {s['代码']}")
     display_cols = ["代码", "价格", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "负债%", "做空%", "上涨空间", "结果"]
     st.dataframe(pd.DataFrame([s])[display_cols], use_container_width=True, hide_index=True)
     
-    # 2. 🎯 Plotly 可视化趋势图
-    st.markdown(f"### {t['chart_title']}")
+    # 2. Plotly 趋势图
     fig = go.Figure()
     fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t['chart_close'], line=dict(color='#00d1ff', width=2)))
     fig.add_trace(go.Scatter(x=s['_m_series'].index, y=s['_m_series'], name=t['chart_ma200'], line=dict(color='#ffaa00', width=2, dash='dash')))
-    fig.update_layout(
-        template="plotly_dark", height=400, margin=dict(l=20, r=20, t=20, b=20),
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        xaxis_title=t['chart_date'], yaxis_title=t['chart_close']
-    )
+    fig.update_layout(template="plotly_dark", height=400, margin=dict(l=10, r=10, t=10, b=10),
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                      xaxis_title=t['chart_date'], yaxis_title=t['chart_close'])
     st.plotly_chart(fig, use_container_width=True)
 
-    # 3. 深度报告
+    # 3. 深度报告 (修复 KeyError)
     with st.expander(f"📑 {s['代码']} - {t['report_title']}", expanded=True):
         st.markdown(f"#### {t['moat_title']}")
         st.write(f"**{t['industry']}:** `{s['_industry']}`")
@@ -109,17 +114,15 @@ def render_report(s):
         c2.metric("ROE", f"{s['ROE%']}%")
         c3.metric("FCF", f"${s['FCF$B']}B")
         
-        st.markdown(f"#### 🎯 分析师预期与持仓")
         col_t1, col_t2 = st.columns(2)
-        col_t1.metric("目标价均值", f"${s['_target']}" if s['_target'] else "N/A")
+        col_t1.metric("分析师均价", f"${s['_target']}" if s['_target'] else "N/A")
         col_t2.metric("潜在空间", s['上涨空间'], delta="Huge" if s['_upside'] > 20 else None)
-        st.write(f"· **机构持仓**: `{s['_inst']:.1f}%` — {'筹码极其稳固' if s['_inst'] > 75 else '分布均衡'}")
-
+        
         st.divider()
         score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['价格'] > s['MA200'] else 0) + (1 if s['_upside'] > 15 else 0)
-        verdict_idx = min(score, 3)
-        st.success(f"### {t['verdict_title']}: {['C','B','A','A+'][verdict_idx]}")
-        st.info(f"💡 {t['strategy_label']}：{t['strategies'][verdict_idx]}")
+        v_idx = min(score, 3)
+        st.success(f"### {t['verdict_title']}: {['C','B','A','A+'][v_idx]}")
+        st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
 
 # --- 4. 主逻辑 ---
 if search_ticker:
@@ -144,11 +147,10 @@ if scan_btn:
 if 'batch_res' in st.session_state:
     st.divider()
     df = pd.DataFrame(st.session_state.batch_res)
-    display_cols = ["代码", "价格", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "负债%", "做空%", "上涨空间", "结果"]
+    d_cols = ["代码", "价格", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "负债%", "做空%", "上涨空间", "结果"]
     m_df = df[df["结果"].str.contains("✅")]
     if not m_df.empty:
-        st.subheader("🏙️ 批量扫描结果中心")
-        sel = st.selectbox("选择扫描出的标的进行透视:", m_df["代码"].tolist())
-        target_s = df[df["代码"] == sel].iloc[0]
-        render_report(target_s)
-    st.dataframe(m_df[display_cols] if st.checkbox(t["match_only"], value=True) else df[display_cols], use_container_width=True, hide_index=True)
+        sel = st.selectbox("Select Target:", m_df["代码"].tolist())
+        show_s = df[df["代码"] == sel].iloc[0]
+        render_report(show_s)
+    st.dataframe(m_df[d_cols] if st.checkbox(t["match_only"], value=True) else df[d_cols], use_container_width=True, hide_index=True)
