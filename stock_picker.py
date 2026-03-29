@@ -5,13 +5,13 @@ import plotly.graph_objects as go
 from datetime import datetime
 from lang_config import LANG 
 
-# --- 1. 初始化设置 ---
+# --- 1. 设置 ---
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
 st.title(t["title"])
 
-# 🎯 重新定义白名单：把 MA200, FCF, Debt 全加回来，让快照更完整
+# 🎯 白名单：确保 MA200 出现在快照表中
 WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "P/E", "PEG", "FCF$B", "Debt%", "Upside", "Match"]
 
 # --- 2. 侧边栏 ---
@@ -22,7 +22,6 @@ t_pe = st.sidebar.number_input(t["pe_label"], value=25.0)
 t_peg = st.sidebar.number_input(t["peg_label"], value=1.2)
 m_roe = st.sidebar.number_input(t["roe_label"], value=15.0)
 m_fcf = st.sidebar.number_input(t["fcf_label"], value=0.5)
-
 st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t["scan_btn"])
@@ -38,34 +37,29 @@ def get_analysis(s):
         m200_s = h['Close'].rolling(200).mean()
         m200_val = m200_s.iloc[-1]
         
-        # 基础财务数据抓取
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         target = inf.get('targetMeanPrice')
         upside = ((target / p) - 1) * 100 if target and p else 0
         
-        # 🎯 相对强度 (RS) 逻辑
+        # RS 计算
         spy_tk = yf.Ticker("^GSPC")
-        h_3m = tk.history(period="3mo")
-        h_spy_3m = spy_tk.history(period="3mo")
+        h_3m, h_spy_3m = tk.history(period="3mo"), spy_tk.history(period="3mo")
         s_ret, spy_ret, rs_diff, rs_is_l = 0, 0, 0, True
         if len(h_3m) >= 60 and len(h_spy_3m) >= 60:
             s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
             spy_ret = ((h_spy_3m['Close'].iloc[-1] / h_spy_3m['Close'].iloc[0]) - 1) * 100
-            rs_diff = s_ret - spy_ret
-            rs_is_l = rs_diff > 0
+            rs_diff, rs_is_l = s_ret - spy_ret, s_ret > spy_ret
 
-        # 🎯 财报日期
-        cal = tk.calendar
-        e_days, e_date = 999, "N/A"
+        # 财报
+        cal, e_days, e_date = tk.calendar, 999, "N/A"
         if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
             try:
                 ed = cal.loc['Earnings Date'].iloc[0]
-                e_date = ed.strftime('%Y-%m-%d')
-                e_days = (ed - pd.Timestamp.now()).days
+                e_date, e_days = ed.strftime('%Y-%m-%d'), (ed - pd.Timestamp.now()).days
             except: pass
 
-        # 🎯 历史 ROE
+        # 历史 ROE
         prev_roe = "N/A"
         try:
             prev_ni = tk.yearly_financials.loc['Net Income'].iloc[1]
@@ -88,64 +82,61 @@ def get_analysis(s):
     except: return None
 
 def render_report(s):
-    # 1. 财报警示
     if 0 <= s['_e_days'] <= 7:
-        st.error(t['earnings_label'].format(days=s['_e_days'], date=s['_e_date']))
+        st.error(t.get('earnings_label').format(days=s['_e_days'], date=s['_e_date']))
         st.divider()
 
-    # 2. 核心快照展示
-    st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
+    st.subheader(f"{t.get('snapshot_title')} - {s['Symbol']}")
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # 3. 趋势图
-    with st.expander(t['chart_title'], expanded=True):
+    with st.expander(t.get('chart_title'), expanded=True):
         fig = go.Figure()
-        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t['chart_close'], line=dict(color='#00d1ff', width=2.5)))
-        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t['chart_ma200'], line=dict(color='#ffaa00', width=2, dash='dash')))
+        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close'), line=dict(color='#00d1ff', width=2.5)))
+        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200'), line=dict(color='#ffaa00', width=2, dash='dash')))
         fig.update_layout(template="plotly_dark", height=380, margin=dict(l=10, r=10, t=10, b=10))
         st.plotly_chart(fig, use_container_width=True)
 
-    # 4. RS 对比图
-    st.markdown(f"### {t['rs_title']}")
-    fig_rs = go.Figure(go.Bar(x=[s['Symbol'], t['rs_label_spy']], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#cccccc']))
+    st.markdown(f"### {t.get('rs_title')}")
+    fig_rs = go.Figure(go.Bar(x=[s['Symbol'], t.get('rs_label_spy')], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#cccccc']))
     fig_rs.update_layout(template="plotly_dark", height=250, margin=dict(l=10, r=10, t=10, b=10))
     st.plotly_chart(fig_rs, use_container_width=True)
-    if s['_rs_is_l']: st.success(t['rs_desc_leader'].format(diff=s['_rs_diff']))
-    else: st.error(t['rs_desc_laggard'].format(diff=abs(s['_rs_diff'])))
+    if s['_rs_is_l']: st.success(t.get('rs_desc_leader').format(diff=s['_rs_diff']))
+    else: st.error(t.get('rs_desc_laggard').format(diff=abs(s['_rs_diff'])))
 
-    # 5. 深度报告 (修复 KeyError 逻辑)
-    with st.expander(t['report_title'], expanded=True):
-        st.markdown(f"### {t['moat_title']}")
+    with st.expander(t.get('report_title'), expanded=True):
+        st.markdown(f"### {t.get('moat_title')}")
         st.write(f"**Industry**: `{s['_ind']}` | **Business**: {s['_sum'][:800]}...")
-        # 🎯 修复点：使用更稳健的 get 方法获取 Key
+        # 🎯 使用 .get() 彻底防崩
         moat_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
         st.info(moat_txt)
         
-        st.markdown(f"#### {t['fin_title']}")
-        c1, c2 = st.columns(2)
+        st.markdown(f"#### {t.get('fin_title')}")
+        c1, c2, c3 = st.columns(3) # 🎯 增加一个 Metric 展示 MA200，回应你的反馈
         c1.metric("PEG Ratio", s['PEG'])
-        c2.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=f"{s['Upside']}")
+        c2.metric("MA200 Line", f"${s['MA200']}")
+        c3.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=f"{s['Upside']}")
         
-        roe_audit_txt = t['consistency_label'].format(curr=s['ROE%'], prev=s['_prev_roe']) if s['_prev_roe'] != "N/A" else f"ROE: {s['ROE%']}%"
-        st.write(roe_audit_txt)
+        roe_audit = t.get('consistency_label').format(curr=s['ROE%'], prev=s['_prev_roe']) if s['_prev_roe'] != "N/A" else f"ROE: {s['ROE%']}%"
+        st.write(roe_audit)
         
         st.markdown("---")
-        st.markdown(f"#### {t['risk_title']}")
+        st.markdown(f"#### {t.get('risk_title')}")
         r1, r2 = st.columns(2)
         r1.caption(f"Sentiment: Inst Held {s['_inst']:.1f}% | Short: {s['Short%']}")
-        if s['Price'] < s['MA200']: r2.error(t['trend_bear'])
-        else: r2.success(t['trend_bull'])
-        st.warning(f"🛡️ **{t['stop_loss_label']}**: `${round(s['_sl'], 2)}`")
+        # 🎯 这里是之前报错的地方，现在加了 .get()
+        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear', 'Trend: Bearish'))
+        else: r2.success(t.get('trend_bull', 'Trend: Bullish'))
+        st.warning(f"🛡️ **{t.get('stop_loss_label')}**: `${round(s['_sl'], 2)}`")
 
         st.divider()
-        # 评级逻辑
-        base_score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if float(s['Upside'].replace('%','')) > 15 else 0)
+        up_val = float(s['Upside'].replace('%','')) if '%' in s['Upside'] else 0
+        base_score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if up_val > 15 else 0)
         if s['Price'] < s['_sl']:
-            st.error(f"### {t['verdict_title']}：{t['verdicts'][1]} (Momentum Broken)")
+            st.error(f"### {t.get('verdict_title')}：{t.get('verdicts')[1]} (Momentum Broken)")
         else:
             v_idx = min(base_score + (1 if s['Price'] > s['MA200'] else 0), 3)
-            st.success(f"### {t['verdict_title']}：{t['verdicts'][v_idx]}")
-            st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
+            st.success(f"### {t.get('verdict_title')}：{t.get('verdicts')[v_idx]}")
+            st.info(f"💡 {t.get('strategy_label')}：{t.get('strategies')[v_idx]}")
 
 # --- 主逻辑 ---
 if search_ticker:
