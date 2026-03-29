@@ -5,11 +5,11 @@ import time
 from datetime import datetime
 import pytz
 
-# --- 1. 界面与字典 ---
+# --- 1. 界面与参数配置 ---
 st.set_page_config(page_title="Issac 投研终端", layout="wide")
 st.title("🍎 Issac 机构级投研研究终端")
 
-# 侧边栏
+# 侧边栏：核心设置
 st.sidebar.header("🔍 深度搜索与筛选")
 search_ticker = st.sidebar.text_input("个股深度透视 (如: NVDA, TSLA, PLTR)", "").upper().strip()
 st.sidebar.divider()
@@ -18,7 +18,7 @@ target_peg = st.sidebar.slider("最高 PEG", 0.1, 3.0, 1.2)
 min_roe = st.sidebar.slider("最低 ROE (%)", 0.0, 50.0, 15.0)
 min_fcf = st.sidebar.number_input("最低 FCF (10亿$)", value=0.5)
 
-# --- 2. 核心分析函数 ---
+# --- 2. 核心分析函数 (数据抓取) ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -27,11 +27,11 @@ def get_analysis(s):
         inf = tk.info
         p, m200 = h['Close'].iloc[-1], h['Close'].rolling(200).mean().iloc[-1]
         v_r = ((h['Volume'].iloc[-1] / h['Volume'].iloc[-8:-1].mean()) - 1) * 100
-        # 技术指标
+        # 技术
         diff = h['Close'].diff()
         g, l = diff.where(diff > 0, 0).rolling(14).mean().iloc[-1], -diff.where(diff < 0, 0).rolling(14).mean().iloc[-1]
         rsi = 100 - (100 / (1 + (g/l))) if l != 0 else 50
-        # 财务数据
+        # 财务
         pe, peg = inf.get('forwardPE', 0), (inf.get('pegRatio') or inf.get('trailingPegRatio') or 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         debt, sh = (inf.get('debtToEquity') or 0), (inf.get('shortPercentOfFloat') or 0)*100
@@ -42,6 +42,12 @@ def get_analysis(s):
 
 # --- 3. JPMorgan 级深度报告组件 ---
 def show_deep_report(s):
+    # 🎯 新增：个股核心参数快照 (表格化显示)
+    st.subheader(f"📊 {s['代码']} 核心参数快照")
+    snapshot_df = pd.DataFrame([s]).drop(columns=["_p","_m","_sh","_v"])
+    st.dataframe(snapshot_df, use_container_width=True, hide_index=True)
+
+    # 深度报告部分
     with st.expander(f"📑 {s['代码']} - JPMorgan 机构级深度投研报告", expanded=True):
         st.markdown("### 🏛️ 第一支柱：核心护城河分析")
         c1, c2, c3 = st.columns(3)
@@ -50,7 +56,7 @@ def show_deep_report(s):
         c3.metric("FCF / 现金流", f"${s['FCF$B']}B", delta="现金充沛" if s['FCF$B'] > 5 else None)
         
         roe_eval = "其 ROE 显示管理层具备极高的资本运作效率，行业壁垒深厚。" if s['ROE%'] > 25 else "盈利能力在行业中表现稳健。"
-        st.info(f"**基本面深度点评：** 该股 PEG 为 `{s['PEG']}`，{roe_eval} 拥有 `${s['FCF$B']}B` 的自由现金流，为其未来的分红、股份回购或业务扩张提供了极强的安全边际。")
+        st.info(f"**基本面深度点评：** 该股 PEG 为 `{s['PEG']}`，{roe_eval} 拥有 `${s['FCF$B']}B` 的自由现金流，为其未来的分红、回购或业务扩张提供了极强的安全边际。")
 
         st.markdown("---")
         st.markdown("### 🚩 第二支柱：筹码博弈与风险预警")
@@ -72,17 +78,17 @@ def show_deep_report(s):
         score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0)
         verdict = ["Wait (C) - 建议观望", "Hold (B) - 建议持有", "Buy (A) - 逢低建仓", "STRONG BUY (A+) - 强力推荐"][score]
         st.success(f"### 🏆 最终评级：{verdict}")
-        st.info(f"💡 **操盘建议：** {['目前趋势不明，建议等待底部放量信号。','基本面扎实但缺少动能，适合底仓观察。','优质资产，趋势已成，建议分批分仓布局。','极品资产，量价护城河齐备，建议果断持股或加仓！'][score]}")
+        st.info(f"💡 **Issac 操盘策略：** {['建议等待底部放量信号。','适合底仓观察。','建议分批分仓布局。','建议果断持股或加仓！'][score]}")
 
-# --- 4. 逻辑执行 ---
+# --- 4. 主逻辑 ---
 if search_ticker:
-    st.subheader(f"🔍 实时透视: {search_ticker}")
+    st.subheader(f"🔍 搜索个股: {search_ticker}")
     res = get_analysis(search_ticker)
     if res: show_deep_report(res)
-    else: st.error("未找到该股票代码，或数据抓取失败。")
+    else: st.error("未找到该代码或数据抓取失败。")
 
 st.divider()
-idx = st.sidebar.selectbox("自动扫描股票池", ["S&P 500", "Nasdaq 100"])
+idx = st.sidebar.selectbox("批量扫描范围", ["S&P 500", "Nasdaq 100"])
 if st.sidebar.button("开始批量扫描"):
     import urllib.request
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies' if idx=="S&P 500" else 'https://en.wikipedia.org/wiki/Nasdaq-100'
@@ -102,6 +108,7 @@ if 'batch_res' in st.session_state:
     df = pd.DataFrame(st.session_state.batch_res)
     m_df = df[df["结果"]=="✅ 符合"]
     if not m_df.empty:
-        sel = st.selectbox("选择要分析的个股:", m_df["代码"].tolist())
+        st.subheader("🏙️ 批量扫描结果研判")
+        sel = st.selectbox("选择个股进行研判:", m_df["代码"].tolist())
         show_deep_report(df[df["代码"]==sel].iloc[0])
     st.dataframe(m_df if st.checkbox("只显示符合条件的股票", value=True) else df.drop(columns=["_p","_m","_sh","_v"]), use_container_width=True, hide_index=True)
