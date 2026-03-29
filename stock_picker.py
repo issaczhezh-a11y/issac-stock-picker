@@ -1,240 +1,144 @@
-import streamlit as st
-import yfinance as yf
-import pandas as pd
-import numpy as np
-import plotly.graph_objects as go
-from datetime import datetime, timezone
-from lang_config import LANG 
-
-# --- 1. 设置 ---
-st.set_page_config(page_title="Issac Terminal", layout="wide")
-lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
-t = LANG[lang_choice]
-st.title(t.get("title", "Issac Terminal"))
-
-WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "Inst%", "P/E", "PEG", "Match"]
-
-# --- 2. 侧边栏 ---
-st.sidebar.header(t.get("sidebar_header", "Settings"))
-search_ticker = st.sidebar.text_input(t.get("search_label", "Search"), "").upper().strip()
-st.sidebar.divider()
-t_pe, t_peg = st.sidebar.number_input(t.get("pe_label", "Max P/E"), value=25.0), st.sidebar.number_input(t.get("peg_label", "Max PEG"), value=1.2)
-m_roe, m_fcf = st.sidebar.number_input(t.get("roe_label", "Min ROE"), value=15.0), st.sidebar.number_input(t.get("fcf_label", "Min FCF"), value=0.5)
-st.sidebar.divider()
-idx_mode = st.sidebar.selectbox(t.get("scan_range", "Scan Range"), ["S&P 500", "Nasdaq 100"])
-scan_btn = st.sidebar.button(t.get("scan_btn", "Scan"))
-
-# --- 3. 宏观风控引擎 (周末加固版) ---
-def get_macro_radar():
-    try:
-        # 周末 1d 可能会空，取 5d 确保有数
-        v_h = yf.Ticker("^VIX").history(period="5d")
-        vix = v_h['Close'].iloc[-1] if not v_h.empty else 20.0
+# lang_config.py - Issac Terminal 终极智库 (v50.0 悬浮提示版)
+LANG = {
+    "CN": {
+        "title": "🍎 Issac 机构级投研研究终端",
+        "search_label": "🔍 个股透视 (回车搜索)",
+        "sidebar_header": "⚙️ 专家级筛选参数",
+        "pe_label": "最高 P/E (市盈率)",
+        "pe_help": "Price-to-Earnings Ratio: 衡量回本年限。数值越低通常代表估值越便宜，但也要看增长。科技股建议 < 35。",
+        "peg_label": "最高 PEG (估值/增长比)",
+        "peg_help": "PEG = P/E / 盈利增长率。机构公认：< 1.0 代表被低估，> 1.2 代表开始变贵。",
+        "roe_label": "最低 ROE % (净资产收益率)",
+        "roe_help": "Return on Equity: 衡量公司用自有资本赚钱的效率。巴菲特最看重的指标，长期 > 15% 是绩优股的门槛。",
+        "fcf_label": "最低 FCF $B (自由现金流)",
+        "fcf_help": "Free Cash Flow: 公司扣除开支后剩下的真金白银。现金流充沛的公司抗风险能力极强，且有能力回购股票。",
+        "scan_range": "📊 批量扫描范围", "scan_btn": "开始批量扫描", "match_only": "🔍 只看符合条件的股票",
+        "snapshot_title": "📊 核心参数快照", "report_title": "Issac 级深度投资研报 (Highly Confidential)",
         
-        t_h = yf.Ticker("^TNX").history(period="5d")
-        tnx = t_h['Close'].iloc[-1] if not t_h.empty else 4.0
+        "ma200_help": "200日移动平均线：机构投资者的‘多空分水岭’。股价在其上方为‘牛市’，下方为‘熊市’。",
+        "inst_help": "机构持仓占比：反映大资金（如贝莱德、先锋领航）的信心。> 70% 代表该股是‘机构抱团股’。",
         
-        spy_h = yf.Ticker("SPY").history(period="1y")
-        spy_p = spy_h['Close'].iloc[-1]
-        spy_ma200 = spy_h['Close'].rolling(200).mean().iloc[-1]
+        "chart_title": "📈 股价与 200 日均线 (MA200) 趋势对比",
+        "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
         
-        if vix > 28 or spy_p < spy_ma200 * 0.98:
-            mood, status = "mood_panic", "CRASH"
-        elif vix > 22:
-            mood, status = "mood_fear", "CAUTION"
-        else:
-            mood, status = "mood_greed", "BULL"
-        return {"vix": round(vix, 2), "tnx": round(tnx, 2), "mood": mood, "status": status}
-    except: return None
-
-# --- 4. 分析引擎 ---
-def get_analysis(s):
-    try:
-        tk = yf.Ticker(s)
-        h = tk.history(period="1y")
-        if h.empty or len(h) < 200: return None
-        inf = tk.info
-        p = h['Close'].iloc[-1]
-        m200_val = h['Close'].rolling(200).mean().iloc[-1]
+        "rs_title": "⚔️ 相对强度 (RS) 动能对比 (vs SPY)",
+        "rs_help": "Relative Strength: 衡量该股跑赢标普 500 指数的能力。领头羊股在市场大跌时通常更抗跌。",
+        "rs_label_spy": "标普 500 (SPY)",
+        "rs_desc_leader": "🔥 **领头羊 (Leader)**：表现超越大盘 `{diff:.1f}%`。",
+        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：表现落后大盘 `{diff:.1f}%`。",
         
-        # 基础数据
-        peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
-        roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
-        inst = (inf.get('heldPercentInstitutions') or 0) * 100
-        cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
+        "earnings_radar_title": "🚦 财报胜率与盈利预测雷达",
+        "next_earn_label": "📅 **下个财报日**: `{date}` (约 `{days}` 天后)",
+        "prev_earn_label": "📊 **上季财报回顾 ({date})**",
+        "eps_vs_est": "EPS 实测: `{act}` vs 预期: `{est}` ➔ 惊喜度: {surp}%",
+        "eps_help": "Earnings Per Share: 每股收益。实际值大幅超过预期（正惊喜度）通常是股价大涨的催化剂。",
         
-        # 估值分位
-        pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
-        pe_pct = "N/A"
-        try:
-            pe_pct = round(( (h['Close'] / (inf.get('trailingEps', 1))) < pe_curr ).mean() * 100, 1)
-        except: pass
-
-        # 财报抓取
-        n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "0.0"
-        try:
-            e_dates = tk.get_earnings_dates(limit=8)
-            if e_dates is not None and not e_dates.empty:
-                e_dates.index = pd.to_datetime(e_dates.index).tz_convert('UTC')
-                now = datetime.now(timezone.utc)
-                fut = e_dates[e_dates.index > now].sort_index()
-                if not fut.empty:
-                    n_date, n_days = fut.index[0].strftime('%Y-%m-%d'), (fut.index[0] - now).days
-                pst = e_dates[e_dates.index <= now].sort_index(ascending=False)
-                if not pst.empty:
-                    p_date, p_act, p_est = pst.index[0].strftime('%Y-%m-%d'), pst['Reported EPS'].iloc[0], pst['EPS Estimate'].iloc[0]
-                    if pd.notnull(p_act) and pd.notnull(p_est) and p_est != 0:
-                        p_surp = round(((p_act / p_est) - 1) * 100, 1)
-        except: pass
-
-        # ROE 审计
-        prev_roe = "N/A"
-        try:
-            y_fin = tk.get_financials()
-            if not y_fin.empty:
-                idx = 1 if len(y_fin.columns) > 1 else 0
-                prev_roe = round((y_fin.loc['Net Income'].iloc[idx] / tk.get_balance_sheet().loc['Stockholders Equity'].iloc[idx]) * 100, 1)
-        except: pass
-
-        # RS 强度
-        s_ret, spy_ret = 0, 0
-        try:
-            h_3m = tk.history(period="3mo")
-            h_spy_3m = yf.Ticker("^GSPC").history(period="3mo")
-            s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
-            spy_ret = ((h_spy_3m['Close'].iloc[-1] / h_spy_3m['Close'].iloc[0]) - 1) * 100
-        except: pass
-
-        ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
-        return {
-            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_val, 2), "Match": "✅" if ok else "❌",
-            "P/E": pe_curr, "PEG": round(peg, 4), "ROE%": round(roe, 1), "Inst%": f"{inst:.1f}%",
-            "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), "Upside": f"{((inf.get('targetMeanPrice', p)/p)-1)*100:+.1f}%",
-            "_p": p, "_m": m200_val, "_h": h, "_m_s": h['Close'].rolling(200).mean(), "_target": inf.get('targetMeanPrice'),
-            "_inst": inst, "_cash": cash, "_debt": debt, "_pe_pct": pe_pct,
-            "_s_ret": s_ret, "_spy_ret": spy_ret, "_n_e": n_date, "_n_d": n_days,
-            "_p_e": p_date, "_p_act": p_act, "_p_est": p_est, "_p_s": p_surp,
-            "_prev_roe": prev_roe, "_fcf_m": ((inf.get('freeCashflow', 0) / inf.get('totalRevenue', 1)) * 100),
-            "_ind": inf.get('industry', "N/A"), "_sum": inf.get('longBusinessSummary', "N/A")
-        }
-    except: return None
-
-def render_report(s):
-    # --- 1. 宏观雷达 ---
-    macro = get_macro_radar()
-    if macro:
-        # 🎯 防御性读取：增加 fallback
-        st.markdown(f"### {t.get('macro_title', 'Macro Radar')}")
-        m1, m2, m3 = st.columns([1, 1, 2])
-        m1.metric(t.get("vix_label", "VIX Index"), macro['vix'])
-        m2.metric(t.get("tnx_label", "10Y Yield"), f"{macro['tnx']}%")
-        m3.subheader(t.get(macro['mood'], macro['mood']))
-        if macro['status'] == "CRASH":
-            st.error(t.get("macro_alert", "Macro Alert: Systemic Risk!"))
-    
-    # --- 2. 综合分与快照 ---
-    score = 0
-    score += 25 if s['Price'] > s['MA200'] else 0
-    score += 25 if s['ROE%'] > 25 else (15 if s['ROE%'] > 15 else 0)
-    score += 20 if s['PEG'] < 1.0 else (10 if s['PEG'] < 1.5 else 0)
-    score += 15 if s['_s_ret'] > s['_spy_ret'] else 0
-    score += 15 if s['Debt%'] < 50 else (5 if s['Debt%'] < 100 else 0)
-
-    st.divider()
-    c_left, c_right = st.columns([3, 1])
-    with c_left:
-        st.markdown(f"## {t.get('snapshot_title', 'Snapshot')} - {s['Symbol']}")
-    with c_right:
-        st.metric(t.get('score_label', 'Score'), f"{score}/100", delta=f"{score-50}")
-
-    st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
-    
-    # --- 3. 趋势图 ---
-    c1, c2 = st.columns([2, 1])
-    with c1:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close', 'Close'), line=dict(color='#00d1ff', width=2)))
-        fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200', 'MA200'), line=dict(color='#ffaa00', width=2, dash='dash')))
-        fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        fig_rs = go.Figure(go.Bar(x=[s['Symbol'], "SPY"], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#444444']))
-        fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig_rs, use_container_width=True)
-    
-    # --- 4. 财报雷达 ---
-    st.markdown(f"### {t.get('earnings_radar_title', 'Earnings Radar')}")
-    st.caption(f"🔗 [Yahoo Finance Analysis](https://finance.yahoo.com/quote/{s['Symbol']}/analysis)")
-    er1, er2 = st.columns(2)
-    next_tmpl = t.get('next_earn_label', 'Next: {date}')
-    er1.info(next_tmpl.format(date=s['_n_e'], days=s['_n_d']))
-    with er2:
-        surp_v = s['_p_s']
-        sur_c = "green" if (isinstance(surp_v, (int, float)) and surp_v > 0) else "red"
-        st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
-        eps_tmpl = t.get('eps_vs_est', 'Act: {act}')
-        st.write(eps_tmpl.format(act=s['_p_act'], est=s['_p_est'], surp=f":{sur_c}[{surp_v}]"))
-
-    # --- 5. 详细研报 ---
-    st.markdown(f"# {t.get('report_title', 'Institutional Report')}")
-    with st.expander(t.get('moat_title', 'Moat Insight'), expanded=True):
-        moat_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
-        st.info(f"**{t.get('industry', 'Industry')}**: `{s['_ind']}` | {moat_txt}")
-        st.write(s['_sum'][:1200] + "...")
-    with st.expander(t.get('fin_title', 'Financials'), expanded=True):
-        f1, f2, f3 = st.columns(3)
-        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B")
-        f2.metric("Indebtedness", f"${s['_debt']:.1f}B")
-        f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%")
-        st.write(t.get('cash_label', 'Cash: {val}').format(val=s['_cash']))
-        st.write(t.get('debt_val_label', 'Debt: {val}').format(val=s['_debt']))
-        st.write(t.get('consistency_label', 'ROE Stability: {curr}').format(curr=s['ROE%'], prev=s['_prev_roe']))
-        d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
-        st.write(t.get('debt_audit', 'Debt: {val}').format(val=s['Debt%'], status=d_st))
-        pe_stat = "Underpriced" if (isinstance(s['_pe_pct'], (int, float)) and s['_pe_pct'] < 25) else "Normal"
-        st.write(t.get('pe_percentile_label', 'Valuation: {val}').format(val=s['_pe_pct'], status=pe_stat))
-    with st.expander(t.get('risk_title', 'Sentiment & Risk'), expanded=True):
-        r1, r2 = st.columns(2)
-        r1.success(t.get('inst_label', 'Ownership').format(inst=s['_inst'], msg="Confidence High" if s['_inst']>70 else "Balanced"))
-        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear', 'Trend: Bearish'))
-        else: r2.success(t.get('trend_bull', 'Trend: Bullish'))
-        st.warning(f"🛡️ **{t.get('stop_loss_label', 'Stop-Loss')}**: `${round(s['_m']*0.97, 2)}` | {t.get('stop_loss_note', 'Note')}")
-    
-    # --- 6. 终极结论 ---
-    st.divider()
-    if macro and macro['status'] == "CRASH":
-        st.error(f"## {t.get('verdict_title', 'Verdict')}：{t.get('verdicts', ['Wait', 'Wait'])[0]} (Macro Risk)")
-        st.warning("🚨 Macro Risk干预：系统性风险较高，建议空仓。")
-    else:
-        v_idx = 1 if s['Price'] < s['MA200']*0.97 else (3 if score > 75 else (2 if score > 50 else 1))
-        st.success(f"## {t.get('verdict_title', 'Verdict')}：{t.get('verdicts', ['Wait', 'Hold', 'Buy', 'Strong Buy'])[v_idx]}")
-        st.info(f"💡 {t.get('strategy_label', 'Strategy')}：{t.get('strategies', ['Wait', 'Hold', 'Buy', 'Strong Buy'])[v_idx]}")
-
-# --- 主逻辑 ---
-if search_ticker:
-    res = get_analysis(search_ticker)
-    if res: render_report(res)
-    else: st.error("Ticker not found. Try MSFT to verify.")
-
-if scan_btn:
-    import urllib.request
-    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies' if idx_mode=="S&P 500" else 'https://en.wikipedia.org/wiki/Nasdaq-100'
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req) as r: 
-        tks = pd.read_html(r)[0 if idx_mode=="S&P 500" else 4].iloc[:, 0].tolist()
-    batch_res, bar = [], st.progress(0)
-    for i, ticker in enumerate(tks):
-        item = get_analysis(str(ticker).replace('.','-'))
-        if item: batch_res.append(item)
-        bar.progress((i+1)/len(tks))
-    st.session_state.batch_res = batch_res
-
-if 'batch_res' in st.session_state:
-    st.divider()
-    df = pd.DataFrame(st.session_state.batch_res)
-    m_df = df[df["Match"]=="✅"]
-    if not m_df.empty:
-        sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
-        target_s = df[df["Symbol"] == sel].iloc[0]
-        render_report(target_s)
-    st.dataframe(m_df[WHITE_LIST] if not m_df.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
+        "moat_title": "🏰 维度一：商业模式与护城河透视",
+        "industry": "细分行业", "summary": "业务简介",
+        "moat_elite": "💎 **评级：顶级 (Elite)**。极高 ROE 意味着强大的定价权。",
+        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
+        "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
+        
+        "fin_title": "🏛️ 维度二：盈利质量、现金与债务审计",
+        "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (TTM) vs **{prev}%** (上年)。",
+        "cash_label": "· **现金储备**: **${val}B** (Total Cash)。",
+        "debt_val_label": "· **债务总额**: **${val}B** (Total Debt)。",
+        "debt_audit": "· **杠杆审计**: 负债权益比 **{val}%** — {status}",
+        "debt_help": "Debt-to-Equity: 负债率。对于高息环境，低负债（< 40%）的公司生存能力更强。",
+        "pe_percentile_label": "· **估值水位**: 当前 P/E 处于过去一年 **{val}%** 分位 ({status})。",
+        "upside_desc": "· **上涨空间**: 分析师预期均价 **${target}**，潜力 **{upside}**。",
+        "debt_healthy": "🟢 财务极其稳健", "debt_mid": "🟡 杠杆适中", "debt_high": "🔴 风险偏高",
+        
+        "growth_title": "📉 维度三：成长动能与现金效率",
+        "risk_title": "🚩 维度四：筹码博弈、趋势与风险预警",
+        "inst_label": "✅ **筹码分布**：机构持仓达 **{inst:.1f}%**。{msg}",
+        "trend_bear": "❌ **趋势雷达**：股价处于 MA200 下方，多头动能瓦解。",
+        "trend_bull": "📈 **趋势雷达**：股价站稳 MA200 上方，多头行情确立。",
+        "stop_loss_label": "建议离场位 (基于 MA200支撑)",
+        "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。若收盘跌破请严格执行离场。",
+        
+        "verdict_title": "🏆 Issac 级终极研判",
+        "verdicts": ["避险 (C)","观望 (B)","建仓 (A)","重仓 (A+)"],
+        "strategies": ["⚠️ 趋势极弱，等候信号。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，逢低买入。","🔥 极品资产，量价齐飞，建议持股！"],
+        "strategy_label": "💡 策略指令",
+        "score_label": "⭐ Issac 投研综合评分",
+        "score_help": "Issac Score (0-100): 基于基本面、技术面、大盘环境的量化评分。> 75 分代表当前是高概率赢面的介入点。",
+        
+        "macro_title": "🌐 全球宏观风控雷达",
+        "vix_label": "📉 恐慌指数 (VIX)",
+        "vix_help": "VIX 衡量市场恐慌程度。> 28 意味着极度恐慌；< 15 意味着市场非常贪婪或平稳。",
+        "tnx_label": "🏛️ 10年美债收益率",
+        "tnx_help": "全球资产定价之锚。它上升时，科技股（如 NVDA）的估值往往会受压制。",
+        "mood_greed": "🟢 贪婪/平稳 (宜持股)",
+        "mood_fear": "🟡 谨慎/震荡 (控仓位)",
+        "mood_panic": "🔴 恐慌/崩溃 (建议空仓)",
+        "macro_alert": "🚨 **系统性风险警示**：当前大环境恶劣，建议暂时清仓回避！",
+        "macro_explainer_title": "🧐 为什么当前处于：{mood}？",
+        "macro_logic_panic": "🆘 **逻辑判断**：VIX 飙升且大盘跌破均线。全市场在踩踏抛售。",
+        "macro_logic_fear": "⚠️ **逻辑判断**：VIX 处于 22-28 区间。波动加大，资金正在外流避险。",
+        "macro_logic_greed": "✅ **逻辑判断**：VIX 低于 20 且趋势向上。市场处于健康的风险偏好期。",
+        "macro_val_desc": "💡 **分值含义**：分值越低代表市场越恐慌。0-25 是‘至暗时刻’，75 以上是‘狂欢终点’。",
+        "macro_hist_desc": "📜 **历史复盘**：极度恐慌通常对应中长期底部；极度贪婪往往预示着 5-10% 的回调。"
+    },
+    "EN": {
+        "title": "🍎 Issac Investment Research Terminal",
+        "search_label": "🔍 Manual Ticker Search (Enter)",
+        "sidebar_header": "⚙️ Expert Filter Settings",
+        "pe_label": "Max P/E",
+        "pe_help": "Price-to-Earnings Ratio: Measures the valuation. Lower is usually cheaper.",
+        "peg_label": "Max PEG",
+        "peg_help": "P/E-to-Growth Ratio. < 1.0 is considered undervalued.",
+        "roe_label": "Min ROE %",
+        "roe_help": "Return on Equity. Measures how much profit is generated with shareholders' money.",
+        "fcf_label": "Min FCF $B",
+        "fcf_help": "Free Cash Flow. Real cash left after expenses.",
+        "snapshot_title": "📊 Core Metrics Snapshot", "report_title": "Issac Level Deep Report (Confidential)",
+        "chart_title": "📈 Price vs 200D Moving Average (MA200)",
+        "chart_close": "Close Price", "chart_ma200": "MA200 Line", "chart_date": "Date",
+        "rs_title": "⚔️ Relative Strength (RS) Momentum",
+        "rs_help": "Measures the stock's performance relative to the S&P 500.",
+        "rs_label_spy": "S&P 500 (SPY)",
+        "rs_desc_leader": "🔥 **Leader**: Outperformed S&P 500 by `{diff:.1f}%`。",
+        "rs_desc_laggard": "🐌 **Laggard**: Underperformed S&P 500 by `{diff:.1f}%`。",
+        "earnings_radar_title": "🚦 Earnings Analytics Radar",
+        "next_earn_label": "📅 **Next Earnings**: `{date}` (In `{days}` days)",
+        "prev_earn_label": "📊 **Last Earnings ({date})**",
+        "eps_vs_est": "Act: `{act}` vs Est: `{est}` ➔ Surprise: {surp}%",
+        "eps_help": "Earnings Per Share surprise. Positive surprise often drives stock prices higher.",
+        "moat_title": "🏰 Pillar I: Business Model & Moat Insight",
+        "industry": "Industry", "summary": "Summary",
+        "moat_elite": "💎 **Rating: Elite**. Exceptional pricing power.",
+        "moat_wide": "🛡️ **Rating: Wide**. Strong barriers with steady growth.",
+        "moat_narrow": "🚧 **Rating: Narrow**. Significant competition detected.",
+        "fin_title": "🏛️ Pillar II: Fundamentals & Financial Safety",
+        "consistency_label": "· **ROE Stability**: **{curr}%** (TTM) vs **{prev}%** (Ref).",
+        "cash_label": "· **Cash Position**: **${val}B** (Total Cash).",
+        "debt_val_label": "· **Total Indebtedness**: **${val}B** (Total Debt).",
+        "debt_audit": "· **Debt Audit**: D/E Ratio **{val}%** — {status}",
+        "debt_help": "D/E Ratio: Measures financial leverage. Lower is safer.",
+        "pe_percentile_label": "· **Valuation**: Current P/E is at **{val}%** percentile ({status})。",
+        "upside_desc": "· **Upside**: Analyst target **${target}**, potential **{upside}**。",
+        "debt_healthy": "🟢 Extremely Healthy", "debt_mid": "🟡 Moderate Leverage", "debt_high": "🔴 High Risk",
+        "risk_title": "🚩 Pillar III: Sentiment & Risk Radar",
+        "inst_label": "✅ **Ownership**: Inst Held **{inst:.1f}%**. {msg}",
+        "trend_bear": "❌ **Trend Radar**: Price below MA200 (Bearish)。",
+        "trend_bull": "📈 **Trend Radar**: Price above MA200 (Bullish)。",
+        "stop_loss_label": "Exit Target (MA200 Based)",
+        "stop_loss_note": "Note: Buffer set at 3% below MA200.",
+        "verdict_title": "🏆 Issac Level Verdict",
+        "verdicts": ["Wait (C)", "Hold (B)", "Accumulate (A)", "STRONG CONVICTION (A+)"],
+        "strategies": ["Wait for signals.", "Monitor only.", "Accumulate on dips.", "Strong conviction hold."],
+        "strategy_label": "💡 Strategy",
+        "score_label": "⭐ Issac Composite Score",
+        "score_help": "Composite score based on Value, Quality, and Momentum.",
+        "macro_title": "🌐 Macro Radar", "vix_label": "📉 VIX Index", "tnx_label": "🏛️ 10Y Yield",
+        "vix_help": "Fear Index. High VIX = Panic.", "tnx_help": "Benchmark for asset pricing.",
+        "mood_greed": "🟢 Greed", "mood_fear": "🟡 Fear", "mood_panic": "🔴 Extreme Panic",
+        "macro_explainer_title": "🧐 Why is it {mood}?",
+        "macro_logic_panic": "🆘 **Logic**: VIX spike and price breakdown.",
+        "macro_logic_fear": "⚠️ **Logic**: Rising volatility and sector rotation.",
+        "macro_logic_greed": "✅ **Logic**: Low VIX and healthy uptrend.",
+        "macro_val_desc": "💡 **Score Meaning**: Lower = More Fear. 0-25 is bottom, >75 is bubble.",
+        "macro_hist_desc": "📜 **History**: Low score signals market bottoms."
+    }
+}
