@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 智库文案库 (v34.0 稳定版)
+# lang_config.py - Issac Terminal 智库文案库 (v35.0 终极补全版)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -34,6 +34,9 @@ LANG = {
         
         "growth_title": "📉 成长动能与现金含量",
         "risk_title": "🚩 筹码博弈、趋势与风险预警",
+        "trend_bear": "❌ **趋势雷达**：股价处于 MA200 下方，多头动能瓦解。",
+        "trend_bull": "📈 **趋势雷达**：股价站稳 MA200 上方，多头行情确立。",
+        
         "stop_loss_title": "🛡️ Issac 实战风控：止损建议",
         "stop_loss_label": "建议离场位 (基于 MA200 支撑)",
         "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。若收盘价跌破此位，建议强制离场。",
@@ -77,6 +80,9 @@ LANG = {
         
         "growth_title": "📉 Growth Momentum & FCF Yield",
         "risk_title": "🚩 Risk, Sentiment & Trend Radar",
+        "trend_bear": "❌ **Trend Radar**: Price is below MA200 (Bearish).",
+        "trend_bull": "📈 **Trend Radar**: Price is supported by MA200 (Bullish).",
+        
         "stop_loss_title": "🛡️ Issac Risk Control: Stop-Loss",
         "stop_loss_label": "Exit Target (MA200 Based)",
         "stop_loss_note": "Note: Buffer set at 3% below MA200. Execute exit if closed below.",
