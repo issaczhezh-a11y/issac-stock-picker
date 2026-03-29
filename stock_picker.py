@@ -68,24 +68,26 @@ LANG = {
 }
 
 st.set_page_config(page_title="Issac Terminal", layout="wide")
+
+# 初始化状态
+if 'show_batch' not in st.session_state: st.session_state.show_batch = False
+
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
 st.title(t["title"])
 
-# --- 2. 侧边栏：搜索、参数、以及批量范围 ---
+# --- 2. 侧边栏 ---
 st.sidebar.header(t["sidebar_header"])
-search_ticker = st.sidebar.text_input(t["search_label"], "").upper().strip()
+search_ticker = st.sidebar.text_input(t["search_label"], key="search_box").upper().strip()
 
 st.sidebar.divider()
-target_pe = st.sidebar.number_input(t["pe_label"], value=25.0, step=1.0)
-target_peg = st.sidebar.number_input(t["peg_label"], value=1.2, step=0.1)
-min_roe = st.sidebar.number_input(t["roe_label"], value=15.0, step=1.0)
-min_fcf = st.sidebar.number_input(t["fcf_label"], value=0.5, step=0.1)
+target_pe = st.sidebar.number_input(t["pe_label"], value=25.0)
+target_peg = st.sidebar.number_input(t["peg_label"], value=1.2)
+min_roe = st.sidebar.number_input(t["roe_label"], value=15.0)
+min_fcf = st.sidebar.number_input(t["fcf_label"], value=0.5)
 
 st.sidebar.divider()
-# 🎯 这里重新带回批量选择
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
-scan_trigger = st.sidebar.button(t["scan_btn"])
 
 # --- 3. 分析函数 ---
 def get_analysis(s):
@@ -101,34 +103,27 @@ def get_analysis(s):
         roe = (inf.get('returnOnEquity') or 0) * 100
         fcf = (inf.get('freeCashflow') or 0) / 1e9
         debt, sh = (inf.get('debtToEquity') or 0), (inf.get('shortPercentOfFloat') or 0) * 100
-        sum_raw = inf.get('longBusinessSummary', "N/A")
-        ind_raw = inf.get('industry', "N/A")
+        sum_raw, ind_raw = inf.get('longBusinessSummary', "N/A"), inf.get('industry', "N/A")
 
         ok = (0 < pe < target_pe and 0 <= peg < target_peg and roe > min_roe and fcf > min_fcf)
         return {"Symbol":s, "Price":round(p,2), "MA200":round(m200,2), "P/E":pe, "PEG":peg, "ROE%":round(roe,1), "FCF$B":round(fcf,1), "D/E":round(debt,1), "Short%":f"{sh:.1f}%", "Vol%":f"{v_r:+.1f}%", "Match":"✅" if ok else "❌", "_p":p, "_m":m200, "_sh":sh, "_v":v_r, "_summary":sum_raw, "_industry":ind_raw}
     except: return None
 
-# --- 4. 深度报告展示 ---
 def show_deep_report(s):
     st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
     clean_display = {k: v for k, v in s.items() if not k.startswith('_')}
     st.dataframe(pd.DataFrame([clean_display]), use_container_width=True, hide_index=True)
-
     with st.expander(f"📑 {s['Symbol']} - {t['report_title']}", expanded=True):
         st.markdown(f"### {t['moat_title']}")
         st.write(f"**{t['industry']}:** `{s['_industry']}`")
-        st.write(f"**{t['summary']}:** {s['_summary'][:800]}...") # 增加长度到800字
-        
-        moat_txt = t['moat_high'] if s['ROE%'] > 30 else (t['moat_mid'] if s['ROE%'] > 15 else t['moat_low'])
-        st.info(moat_txt)
-
+        st.write(f"**{t['summary']}:** {s['_summary'][:800]}...")
+        st.info(t['moat_high'] if s['ROE%'] > 30 else (t['moat_mid'] if s['ROE%'] > 15 else t['moat_low']))
         st.markdown("---")
         st.markdown(f"### {t['fin_title']}")
         c1, c2, c3 = st.columns(3)
         c1.metric("PEG", s['PEG'], delta="Value" if s['PEG'] < 0.8 else None)
         c2.metric("ROE", f"{s['ROE%']}%", delta="High" if s['ROE%'] > 25 else None)
         c3.metric("FCF", f"${s['FCF$B']}B")
-
         st.markdown("---")
         st.markdown(f"### {t['risk_title']}")
         r1, r2 = st.columns(2)
@@ -138,29 +133,19 @@ def show_deep_report(s):
         with r2:
             if s['_p'] < s['_m']: st.error(t['trend_warn'])
             else: st.success(t['trend_ok'])
-
         st.divider()
         score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0)
-        verdicts = ["Wait (C)", "Hold (B)", "Buy (A)", "STRONG BUY (A+)"]
-        st.success(f"### {t['verdict_title']}: {verdicts[score]}")
+        st.success(f"### {t['verdict_title']}: {['Wait (C)','Hold (B)','Buy (A)','STRONG BUY (A+)'][score]}")
         st.info(f"{t['strategy_label']}: {t['strategies'][score]}")
 
-# --- 5. 执行逻辑 ---
-# A. 优先处理搜索
-if search_ticker:
-    st.divider()
-    res = get_analysis(search_ticker)
-    if res: show_deep_report(res)
-    else: st.error("Ticker not found.")
-
-# B. 处理批量扫描
-if scan_trigger:
+# --- 4. 逻辑控制 ---
+if st.sidebar.button(t["scan_btn"]):
+    st.session_state.show_batch = True
     import urllib.request
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies' if idx_mode=="S&P 500" else 'https://en.wikipedia.org/wiki/Nasdaq-100'
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
     with urllib.request.urlopen(req) as r: 
         tks = pd.read_html(r)[0 if idx_mode=="S&P 500" else 4].iloc[:, 0].tolist()
-    
     batch_res = []
     bar = st.progress(0)
     for i, ticker in enumerate(tks):
@@ -169,16 +154,19 @@ if scan_trigger:
         bar.progress((i+1)/len(tks))
     st.session_state.batch_res = batch_res
 
-# 展示批量结果
-if 'batch_res' in st.session_state:
+# 展示逻辑：如果用户在输入框打字，则强制展示个股并“隐藏”批量研报（但保留表格）
+if search_ticker:
+    st.divider()
+    res = get_analysis(search_ticker)
+    if res: show_deep_report(res)
+    else: st.error("Ticker not found.")
+elif st.session_state.show_batch and 'batch_res' in st.session_state:
     st.divider()
     df = pd.DataFrame(st.session_state.batch_res)
     m_df = df[df["Match"].str.contains("✅")]
-    
     if not m_df.empty:
         st.subheader("🏙️ Batch Scan Intelligence")
         sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
         s_target = df[df["Symbol"] == sel].iloc[0]
         show_deep_report(s_target)
-    
     st.dataframe(m_df if st.checkbox(t["match_only"], value=True) else df, use_container_width=True, hide_index=True)
