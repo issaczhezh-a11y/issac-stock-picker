@@ -6,13 +6,13 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 from lang_config import LANG 
 
-# --- 1. 设置 ---
+# --- 1. 初始化设置 ---
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
 st.title(t["title"])
 
-# 🎯 顶层快照表白名单
+# 顶层快照白名单
 WHITE_LIST = ["Symbol", "Price", "MA200", "ROE%", "Inst%", "P/E", "PEG", "Match"]
 
 # --- 2. 侧边栏 ---
@@ -25,7 +25,7 @@ st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t.get("scan_range"), ["S&P 500", "Nasdaq 100"])
 scan_btn = st.sidebar.button(t.get("scan_btn"))
 
-# --- 3. 分析引擎 ---
+# --- 🎯 3. 分析引擎 (财报抓取深度强化) ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -35,14 +35,13 @@ def get_analysis(s):
         p = h['Close'].iloc[-1]
         m200_val = h['Close'].rolling(200).mean().iloc[-1]
         
-        # A. 基础财务 (含现金、债务、机构)
+        # 基础财务
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
-        cash = (inf.get('totalCash') or 0) / 1e9
-        debt = (inf.get('totalDebt') or 0) / 1e9
+        cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
         
-        # B. 估值水位
+        # 估值水位
         pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
         pe_pct = "N/A"
         try:
@@ -50,44 +49,55 @@ def get_analysis(s):
             pe_pct = round((hist_pe < pe_curr).mean() * 100, 1)
         except: pass
 
-        # C. 深度 ROE 审计
+        # 🧩 深度 ROE 审计
         prev_roe = "N/A"
         try:
-            y_fin = tk.financials
-            y_bs = tk.balance_sheet
-            if not y_fin.empty:
+            y_fin, y_bs = tk.get_financials(), tk.get_balance_sheet()
+            if not y_fin.empty and not y_bs.empty:
+                # 优先对比上两个财年，避开 TTM 的干扰
                 idx = 1 if len(y_fin.columns) > 1 else 0
                 prev_roe = round((y_fin.loc['Net Income'].iloc[idx] / y_bs.loc['Stockholders Equity'].iloc[idx]) * 100, 1)
         except: pass
 
-        # D. 🎯 强化版财报雷达 (修复 N/A)
+        # 🎯 🧩 核心修复：财报雷达多重探测逻辑
         n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "N/A"
+        
         try:
-            # 1. 抓取历史 EPS 惊喜数据
-            e_dates = tk.earnings_dates
-            if not e_dates.empty:
-                now = datetime.now(timezone.utc)
-                # 未来财报
-                fut = e_dates[e_dates.index > now].sort_index()
-                if not fut.empty:
-                    n_date, n_days = fut.index[0].strftime('%Y-%m-%d'), (fut.index[0] - now).days
+            # 路径 A: 尝试获取最新财报表
+            e_table = tk.get_earnings_dates(limit=12)
+            if e_table is not None and not e_table.empty:
+                # 转换索引为统一的 UTC 时间戳
+                e_table.index = pd.to_datetime(e_table.index).tz_convert('UTC')
+                now_utc = datetime.now(timezone.utc)
                 
-                # 上次财报
-                pst = e_dates[e_dates.index < now].sort_index(ascending=False)
+                # 寻找未来的财报日
+                fut = e_table[e_table.index > now_utc].sort_index()
+                if not fut.empty:
+                    n_date = fut.index[0].strftime('%Y-%m-%d')
+                    n_days = (fut.index[0] - now_utc).days
+                
+                # 寻找上一个财报表现
+                pst = e_table[e_table.index <= now_utc].sort_index(ascending=False)
                 if not pst.empty:
                     p_date = pst.index[0].strftime('%Y-%m-%d')
-                    p_act, p_est = pst['Reported EPS'].iloc[0], pst['EPS Estimate'].iloc[0]
-                    if pd.notnull(p_act) and pd.notnull(p_est) and p_est != 0:
+                    p_act = pst['Reported EPS'].iloc[0]
+                    p_est = pst['EPS Estimate'].iloc[0]
+                    # 有些列名可能是 'Surprise(%)'
+                    if 'Surprise(%)' in pst.columns:
+                        p_surp = round(pst['Surprise(%)'].iloc[0] * 100, 1) if pst['Surprise(%)'].iloc[0] < 1 else round(pst['Surprise(%)'].iloc[0], 1)
+                    elif pd.notnull(p_act) and pd.notnull(p_est) and p_est != 0:
                         p_surp = round(((p_act / p_est) - 1) * 100, 1)
-            
-            # 2. 如果 calendar 拿到了更准的日期，覆盖它
-            cal = tk.calendar
-            if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
-                c_date = cal.loc['Earnings Date'].iloc[0]
-                n_date, n_days = c_date.strftime('%Y-%m-%d'), (c_date - datetime.now()).days
+
+            # 路径 B: 如果 n_date 还是 N/A，尝试 tk.calendar
+            if n_date == "N/A":
+                cal = tk.calendar
+                if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
+                    c_date = cal.loc['Earnings Date'].iloc[0]
+                    n_date = c_date.strftime('%Y-%m-%d')
+                    n_days = (pd.to_datetime(c_date).tz_localize(None) - datetime.now()).days
         except: pass
 
-        # E. RS 计算
+        # RS 相对强度
         s_ret, spy_ret = 0, 0
         try:
             spy_tk = yf.Ticker("^GSPC")
@@ -96,7 +106,6 @@ def get_analysis(s):
             spy_ret = ((h_spy_3m['Close'].iloc[-1] / h_spy_3m['Close'].iloc[0]) - 1) * 100
         except: pass
 
-        ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
             "Symbol": s, "Price": round(p, 2), "MA200": round(m200_val, 2), "Match": "✅" if ok else "❌",
             "P/E": pe_curr, "PEG": round(peg, 4), "ROE%": round(roe, 1), "Inst%": f"{inst:.1f}%",
@@ -111,102 +120,13 @@ def get_analysis(s):
     except: return None
 
 def render_report(s):
-    # 🚨 1. 快照区
+    # 🚨 1. 快照与动能图
     st.markdown(f"## {t.get('snapshot_title')} - {s['Symbol']}")
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # 📈 2. 动能对比图
     c1, c2 = st.columns([2, 1])
     with c1:
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=s['_h'].index, y=s['_h']['Close'], name=t.get('chart_close'), line=dict(color='#00d1ff', width=2)))
         fig.add_trace(go.Scatter(x=s['_m_s'].index, y=s['_m_s'], name=t.get('chart_ma200'), line=dict(color='#ffaa00', width=2, dash='dash')))
-        fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0), showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    with c2:
-        fig_rs = go.Figure(go.Bar(x=[s['Symbol'], "SPY"], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#444444']))
-        fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig_rs, use_container_width=True)
-    
-    # 🚦 3. 财报胜率雷达 (超级详细修复)
-    st.markdown(f"### {t.get('earnings_radar_title')}")
-    er1, er2 = st.columns(2)
-    er1.info(t.get('next_earn_label', 'Next: {date}').format(date=s['_n_e'], days=s['_n_d']))
-    with er2:
-        sur_val = s['_p_s']
-        sur_color = "green" if (isinstance(sur_val, (int, float)) and sur_val > 0) else "red"
-        st.markdown(f"**{t.get('prev_earn_label', 'Last: {date}').format(date=s['_p_e'])}**")
-        st.write(t.get('eps_vs_est', 'EPS: {act}').format(act=s['_p_act'], est=s['_p_est'], surp=f":{sur_color}[{sur_val}]"))
-
-    # 📑 4. 超详细深度研报
-    st.markdown(f"# {t.get('report_title')}")
-    
-    with st.expander(t.get('moat_title'), expanded=True):
-        moat_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
-        st.info(f"**{t.get('industry')}**: `{s['_ind']}` | {moat_txt}")
-        st.write(s['_sum'][:1200] + "...")
-
-    with st.expander(t.get('fin_title'), expanded=True):
-        f1, f2, f3 = st.columns(3)
-        f1.metric("Cash (Liquidity)", f"${s['_cash']:.1f}B")
-        f2.metric("Total Debt", f"${s['_debt']:.1f}B")
-        f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%")
-        st.markdown("---")
-        st.write(t.get('cash_label').format(val=s['_cash']))
-        st.write(t.get('debt_val_label').format(val=s['_debt']))
-        st.write(t.get('consistency_label', 'ROE Stability: {curr}%').format(curr=s['ROE%'], prev=s['_prev_roe']))
-        d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
-        st.write(t.get('debt_audit').format(val=s['Debt%'], status=d_st))
-        st.write(t.get('upside_desc', 'Upside: {upside}').format(target=s['_target'] if s['_target'] else 'N/A', upside=s['Upside']))
-        pe_stat = "Underpriced" if (isinstance(s['_pe_pct'], (int, float)) and s['_pe_pct'] < 25) else "Normal"
-        st.write(t.get('pe_percentile_label').format(val=s['_pe_pct'], status=pe_stat))
-
-    with st.expander(t.get('risk_title'), expanded=True):
-        r1, r2 = st.columns(2)
-        inst_m = "Strong Institutional Conviction" if s['_inst'] > 70 else "Diversified Ownership"
-        r1.success(t.get('inst_label').format(inst=s['_inst'], msg=inst_m))
-        if s['Price'] < s['MA200']: r2.error(t.get('trend_bear'))
-        else: r2.success(t.get('trend_bull'))
-        st.warning(f"🛡️ **{t.get('stop_loss_label')}**: `${round(s['_m']*0.97, 2)}` | {t.get('stop_loss_note')}")
-
-    # 5. 终极结论
-    st.divider()
-    up_val = float(s['Upside'].replace('%','')) if '%' in s['Upside'] else 0
-    score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if up_val > 15 else 0)
-    if s['Price'] < s['MA200']*0.97:
-        st.error(f"## {t.get('verdict_title')}：{t.get('verdicts')[1]} (Momentum Broken)")
-    else:
-        v_idx = min(score + (1 if s['Price'] > s['MA200'] else 0), 3)
-        st.success(f"## {t.get('verdict_title')}：{t.get('verdicts')[v_idx]}")
-        st.info(f"💡 {t.get('strategy_label')}：{t.get('strategies')[v_idx]}")
-
-# --- 4. 执行逻辑 ---
-if search_ticker:
-    res = get_analysis(search_ticker)
-    if res: render_report(res)
-    else: st.error("Ticker not found. Data provider might be delayed.")
-
-if scan_btn:
-    import urllib.request
-    url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies' if idx_mode=="S&P 500" else 'https://en.wikipedia.org/wiki/Nasdaq-100'
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req) as r: 
-        tks = pd.read_html(r)[0 if idx_mode=="S&P 500" else 4].iloc[:, 0].tolist()
-    batch_res = []
-    bar = st.progress(0)
-    for i, ticker in enumerate(tks):
-        item = get_analysis(str(ticker).replace('.','-'))
-        if item: batch_res.append(item)
-        bar.progress((i+1)/len(tks))
-    st.session_state.batch_res = batch_res
-
-if 'batch_res' in st.session_state:
-    st.divider()
-    df = pd.DataFrame(st.session_state.batch_res)
-    m_df = df[df["Match"]=="✅"]
-    if not m_df.empty:
-        st.subheader("🏙️ Batch Scan Results")
-        sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
-        target_s = df[df["Symbol"] == sel].iloc[0]
-        render_report(target_s)
-    st.dataframe(m_df[WHITE_LIST] if not m_df.empty else pd.DataFrame(), use_container_width=True, hide_index=True)
+        fig.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=1
