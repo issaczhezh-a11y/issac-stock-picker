@@ -3,64 +3,9 @@ import yfinance as yf
 import pandas as pd
 import plotly.graph_objects as go
 from datetime import datetime
-import pytz
+from lang_config import LANG  # 🎯 关键：引入刚才创建的字典
 
-# --- 1. 双语字典 (已更新为 Issac 专属评级) ---
-LANG = {
-    "CN": {
-        "title": "🍎 Issac 机构级投研研究终端", "search_label": "🔍 个股透视 (回车搜索)",
-        "sidebar_header": "⚙️ 专家级筛选参数", "pe_label": "最高 P/E (建议 < 25)",
-        "peg_label": "最高 PEG (建议 < 1.2)", "roe_label": "最低 ROE % (建议 > 15)",
-        "fcf_label": "最低 FCF $B (建议 > 0.5)", "scan_range": "📊 批量扫描范围",
-        "scan_btn": "开始批量扫描", "match_only": "🔍 只看符合条件的股票",
-        "snapshot_title": "📊 核心参数快照", "report_title": "深度投资研报 (Confidential)",
-        "moat_title": "🏰 商业模式与护城河深度透视", "fin_title": "🏛️ 盈利质量与财务安全评价",
-        "risk_title": "🚩 筹码博弈、趋势与风险预警", "verdict_title": "🏆 Issac 级终极研判",
-        "strategy_label": "💡 机构级操盘策略", "industry": "细分行业", "summary": "业务简介",
-        "chart_title": "📈 股价与 200 日均线 (MA200) 趋势对比",
-        "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
-        "moat_elite": "💎 **护城河评级：顶级 (Elite Moat)**。该公司的 ROE 极高，显示出强大的行业话语权。",
-        "moat_wide": "🛡️ **护城河评级：宽阔 (Wide Moat)**。拥有成熟竞争壁垒，盈利质量高。",
-        "moat_narrow": "🚧 **护城河评级：较窄 (Narrow Moat)**。面临行业激烈竞争，需警惕利润缩水。",
-        "debt_healthy": "🟢 财务极其稳健", "debt_mid": "🟡 杠杆适中", "debt_high": "🔴 财务压力偏高",
-        "debt_audit": "· **杠杆审计**: 负债权益比 `{val}%` — {status}",
-        "upside_desc": "· **成长空间**: 分析师预期均价为 `${target}`，潜在获利空间 `{upside}`。",
-        "inst_high": "机构持仓达 {inst:.1f}%，筹码高度集中。",
-        "inst_mid": "机构持仓约 {inst:.1f}%，散户参与度适中。",
-        "chip_dist": "✅ **筹码分布**：{msg} (做空率: {sh})",
-        "trend_bear": "❌ **趋势雷达**：当前股价处于 MA200 牛熊分界线下方。",
-        "trend_bull": "📈 **趋势雷达**：股价获得 200 日均线支撑，处于多头行情。",
-        "verdicts": ["观望 (C)","持有 (B)","买入 (A)","强力买入 (A+)"],
-        "strategies": ["⚠️ 趋势极弱，建议场外等候。","⚖️ 缺乏动能，仅适合极轻仓观察。","✅ 趋势确立，建议分批分仓布局。","🔥 极品资产，量价齐飞，建议果断持股！"]
-    },
-    "EN": {
-        "title": "🍎 Issac Investment Research Terminal", "search_label": "🔍 Manual Ticker Search (Enter)",
-        "sidebar_header": "⚙️ Expert Filter Settings", "pe_label": "Max P/E (Ref < 25)",
-        "peg_label": "Max PEG (Ref < 1.2)", "roe_label": "Min ROE % (Ref > 15)",
-        "fcf_label": "Min FCF $B (Ref > 0.5)", "scan_range": "📊 Auto-Scan Range",
-        "scan_btn": "Start Batch Scan", "match_only": "🔍 Show Matches Only",
-        "snapshot_title": "📊 Core Metrics Snapshot", "report_title": "Deep Institutional Report",
-        "moat_title": "🏰 Business Model & Moat Insight", "fin_title": "🏛️ Fundamentals & Financial Safety",
-        "risk_title": "🚩 Risk, Sentiment & Trend Radar", "verdict_title": "🏆 Issac Level Verdict",
-        "strategy_label": "💡 Strategy", "industry": "Industry", "summary": "Business Summary",
-        "chart_title": "📈 Price vs 200D Moving Average (MA200)",
-        "chart_close": "Close Price", "chart_ma200": "MA200 Line", "chart_date": "Date",
-        "moat_elite": "💎 **Moat Rating: Elite**. Exceptionally high ROE indicates strong market dominance.",
-        "moat_wide": "🛡️ **Moat Rating: Wide**. Mature competitive barriers with high earnings quality.",
-        "moat_narrow": "🚧 **Moat Rating: Narrow**. Facing stiff competition; monitor profit margins.",
-        "debt_healthy": "🟢 Extremely Healthy", "debt_mid": "🟡 Moderate Leverage", "debt_high": "🔴 High Financial Pressure",
-        "debt_audit": "· **Debt Audit**: D/E Ratio `{val}%` — {status}",
-        "upside_desc": "· **Growth Upside**: Analyst target is `${target}`, potential gain `{upside}`.",
-        "inst_high": "Institutions hold {inst:.1f}%, highly concentrated ownership.",
-        "inst_mid": "Institutions hold {inst:.1f}%, balanced retail participation.",
-        "chip_dist": "✅ **Sentiment**: {msg} (Short Ratio: {sh})",
-        "trend_bear": "❌ **Trend Radar**: Price is below MA200 (Bearish).",
-        "trend_bull": "📈 **Trend Radar**: Price is supported by MA200 (Bullish).",
-        "verdicts": ["Wait (C)", "Hold (B)", "Buy (A)", "STRONG BUY (A+)"],
-        "strategies": ["Wait for bottom signals.", "Monitor closely.", "Accumulate on dips.", "High conviction hold."]
-    }
-}
-
+# --- 1. 初始化设置 ---
 st.set_page_config(page_title="Issac Terminal", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
@@ -90,12 +35,9 @@ def get_analysis(s):
         p = h['Close'].iloc[-1]
         m200_s = h['Close'].rolling(200).mean()
         
-        # 🎯 修复 PEG
         peg = inf.get('pegRatio')
         if peg is None or peg == 0: peg = inf.get('trailingPegRatio', 0)
-        
-        roe = (inf.get('returnOnEquity') or 0) * 100
-        fcf = (inf.get('freeCashflow') or 0) / 1e9
+        roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
         target = inf.get('targetMeanPrice')
         upside = ((target / p) - 1) * 100 if target and p else 0
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
@@ -127,18 +69,15 @@ def render_report(s):
         st.write(f"**{t['industry']}**: `{s['_ind']}`")
         st.write(f"**{t['summary']}**: {s['_sum'][:800]}...")
         st.info(t['moat_elite'] if s['ROE%'] > 35 else (t['moat_wide'] if s['ROE%'] > 18 else t['moat_narrow']))
-
         st.markdown("---")
         st.markdown(f"### {t['fin_title']}")
         c1, c2, c3 = st.columns(3)
         c1.metric("PEG", s['PEG'], delta="Value" if s['PEG'] < 0.7 else None)
         c2.metric("Target Price", f"${round(s['_target'], 2)}" if s['_target'] else "N/A", delta=s['Upside'])
         c3.metric("FCF", f"${s['FCF$B']}B")
-        
         d_status = t['debt_healthy'] if s['Debt%'] < 40 else (t['debt_mid'] if s['Debt%'] < 100 else t['debt_high'])
         st.write(t['debt_audit'].format(val=s['Debt%'], status=d_status))
         st.write(t['upside_desc'].format(target=s['_target'], upside=s['Upside']))
-
         st.markdown("---")
         st.markdown(f"### {t['risk_title']}")
         r1, r2 = st.columns(2)
@@ -146,14 +85,13 @@ def render_report(s):
         r1.success(t['chip_dist'].format(msg=inst_msg, sh=s['Short%']))
         if s['_p'] < s['_m']: r2.error(t['trend_bear'])
         else: r2.success(t['trend_bull'])
-
         st.divider()
         score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0) + (1 if s['_up_val'] > 15 else 0)
         v_idx = min(score, 3)
         st.success(f"### {t['verdict_title']}：{t['verdicts'][v_idx]}")
         st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
 
-# --- 4. 逻辑流 ---
+# --- 4. 主逻辑 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
