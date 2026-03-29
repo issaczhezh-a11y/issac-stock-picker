@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import pytz
 
-# --- 1. 双语字典 ---
+# --- 1. 双语字典 (已更新为 Issac 专属评级) ---
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端", "search_label": "🔍 个股透视 (回车搜索)",
@@ -15,7 +15,7 @@ LANG = {
         "scan_btn": "开始批量扫描", "match_only": "🔍 只看符合条件的股票",
         "snapshot_title": "📊 核心参数快照", "report_title": "深度投资研报 (Confidential)",
         "moat_title": "🏰 商业模式与护城河深度透视", "fin_title": "🏛️ 盈利质量与财务安全评价",
-        "risk_title": "🚩 筹码博弈、趋势与风险预警", "verdict_title": "🏆 JPMorgan 级终极研判",
+        "risk_title": "🚩 筹码博弈、趋势与风险预警", "verdict_title": "🏆 Issac 级终极研判",
         "strategy_label": "💡 机构级操盘策略", "industry": "细分行业", "summary": "业务简介",
         "chart_title": "📈 股价与 200 日均线 (MA200) 趋势对比",
         "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
@@ -41,7 +41,7 @@ LANG = {
         "scan_btn": "Start Batch Scan", "match_only": "🔍 Show Matches Only",
         "snapshot_title": "📊 Core Metrics Snapshot", "report_title": "Deep Institutional Report",
         "moat_title": "🏰 Business Model & Moat Insight", "fin_title": "🏛️ Fundamentals & Financial Safety",
-        "risk_title": "🚩 Risk, Sentiment & Trend Radar", "verdict_title": "🏆 Institutional Verdict",
+        "risk_title": "🚩 Risk, Sentiment & Trend Radar", "verdict_title": "🏆 Issac Level Verdict",
         "strategy_label": "💡 Strategy", "industry": "Industry", "summary": "Business Summary",
         "chart_title": "📈 Price vs 200D Moving Average (MA200)",
         "chart_close": "Close Price", "chart_ma200": "MA200 Line", "chart_date": "Date",
@@ -66,7 +66,6 @@ lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizonta
 t = LANG[lang_choice]
 st.title(t["title"])
 
-# 显式定义白名单列
 WHITE_LIST = ["Symbol", "Price", "MA200", "P/E", "PEG", "ROE%", "FCF$B", "Debt%", "Short%", "Upside", "Match"]
 
 # --- 2. 侧边栏 ---
@@ -89,7 +88,11 @@ def get_analysis(s):
         if len(h) < 200: return None
         inf = tk.info
         p = h['Close'].iloc[-1]
-        m200_series = h['Close'].rolling(200).mean()
+        m200_s = h['Close'].rolling(200).mean()
+        
+        # 🎯 修复 PEG
+        peg = inf.get('pegRatio')
+        if peg is None or peg == 0: peg = inf.get('trailingPegRatio', 0)
         
         roe = (inf.get('returnOnEquity') or 0) * 100
         fcf = (inf.get('freeCashflow') or 0) / 1e9
@@ -97,26 +100,18 @@ def get_analysis(s):
         upside = ((target / p) - 1) * 100 if target and p else 0
         inst = (inf.get('heldPercentInstitutions') or 0) * 100
         
-        # 🎯 修复 PEG：尝试抓取多个可能的 Key，防止全部显示为 0
-        peg = inf.get('pegRatio')
-        if peg is None or peg == 0:
-            peg = inf.get('trailingPegRatio', 0)
-        
-        pe = inf.get('forwardPE', 0)
-        
-        ok = (0 < pe < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
+        ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
-            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_series.iloc[-1], 2), "P/E": pe, 
-            "PEG": peg, "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), 
+            "Symbol": s, "Price": round(p, 2), "MA200": round(m200_s.iloc[-1], 2), "P/E": inf.get('forwardPE', 0), 
+            "PEG": round(peg, 4), "ROE%": round(roe, 1), "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), 
             "Short%": f"{(inf.get('shortPercentOfFloat') or 0)*100:.1f}%", "Upside": f"{upside:+.1f}%", "Match": "✅" if ok else "❌",
-            "_p": p, "_m": m200_series.iloc[-1], "_h": h, "_m_s": m200_series, "_target": target, "_up_val": upside, "_inst": inst,
+            "_p": p, "_m": m200_s.iloc[-1], "_h": h, "_m_s": m200_s, "_target": target, "_up_val": upside, "_inst": inst,
             "_sum": inf.get('longBusinessSummary', "N/A"), "_ind": inf.get('industry', "N/A")
         }
     except: return None
 
 def render_report(s):
     st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
-    # 🎯 强制过滤：只展示白名单列
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
     fig = go.Figure()
@@ -158,7 +153,7 @@ def render_report(s):
         st.success(f"### {t['verdict_title']}：{t['verdicts'][v_idx]}")
         st.info(f"💡 {t['strategy_label']}：{t['strategies'][v_idx]}")
 
-# --- 4. 主逻辑 ---
+# --- 4. 逻辑流 ---
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
@@ -181,9 +176,7 @@ if scan_btn:
 if 'batch_res' in st.session_state:
     st.divider()
     df = pd.DataFrame(st.session_state.batch_res)
-    # 🎯 批量结果也强制过滤
     m_df = df[df["Match"].str.contains("✅")][WHITE_LIST]
-    
     if not m_df.empty:
         st.subheader("🏙️ Batch Scan Results")
         sel = st.selectbox("Select Stock:", m_df["Symbol"].tolist())
