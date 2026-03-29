@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 智库文案 (v48.0 终极宏观版)
+# lang_config.py - Issac Terminal 终极加固版 (v48.1)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -20,7 +20,7 @@ LANG = {
         "moat_title": "🏰 维度一：商业模式与护城河透视",
         "industry": "细分行业", "summary": "业务简介",
         "moat_elite": "💎 **评级：顶级 (Elite)**。极高 ROE 意味着强大的定价权。",
-        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量极高。",
+        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
         "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
         "fin_title": "🏛️ 维度二：盈利质量、现金与债务审计",
         "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (TTM) vs **{prev}%** (上年)。",
