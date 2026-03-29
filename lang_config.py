@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 终极补全智库 (v46.0)
+# lang_config.py - Issac Terminal 智库文案 (v47.0 最终加固版)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -6,13 +6,13 @@ LANG = {
         "sidebar_header": "⚙️ 专家级筛选参数",
         "pe_label": "最高 P/E", "peg_label": "最高 PEG", "roe_label": "最低 ROE %", "fcf_label": "最低 FCF $B",
         "scan_range": "📊 批量扫描范围", "scan_btn": "开始批量扫描", "match_only": "🔍 只看符合条件的股票",
-        "snapshot_title": "📊 核心参数快照", "report_title": "Issac 级深度投资研报 (Highly Confidential)",
+        "snapshot_title": "📊 核心参数快照", "report_title": "Issac 级深度投资研报 (Confidential)",
         "chart_title": "📈 股价与 200 日均线 (MA200) 趋势对比",
         "chart_close": "收盘价", "chart_ma200": "200日均线", "chart_date": "日期",
         "rs_title": "⚔️ 相对强度 (RS) 动能对比 (vs SPY)",
         "rs_label_spy": "标普 500 (SPY)",
-        "rs_desc_leader": "🔥 **领头羊 (Leader)**：表现超越大盘 `{diff:.1f}%`。",
-        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：表现落后大盘 `{diff:.1f}%`。",
+        "rs_desc_leader": "🔥 **领头羊 (Leader)**：近3个月超越大盘 `{diff:.1f}%`。",
+        "rs_desc_laggard": "🐌 **拖油瓶 (Laggard)**：近3个月落后大盘 `{diff:.1f}%`。",
         "earnings_radar_title": "🚦 财报胜率与盈利预测雷达",
         "next_earn_label": "📅 **下个财报日**: `{date}` (约 `{days}` 天后)",
         "prev_earn_label": "📊 **上季财报回顾 ({date})**",
@@ -20,7 +20,7 @@ LANG = {
         "moat_title": "🏰 维度一：商业模式与护城河透视",
         "industry": "细分行业", "summary": "业务简介",
         "moat_elite": "💎 **评级：顶级 (Elite)**。极高 ROE 意味着强大的定价权。",
-        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
+        "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量极高。",
         "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
         "fin_title": "🏛️ 维度二：盈利质量、现金与债务审计",
         "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (TTM) vs **{prev}%** (上年)。",
@@ -36,11 +36,12 @@ LANG = {
         "trend_bear": "❌ **趋势雷达**：股价处于 MA200 下方，多头动能瓦解。",
         "trend_bull": "📈 **趋势雷达**：股价站稳 MA200 上方，多头行情确立。",
         "stop_loss_label": "建议离场位 (基于 MA200)",
-        "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。",
+        "stop_loss_note": "注：该价位取 MA200 下方 3% 为缓冲区。若收盘跌破请严格执行离场。",
         "verdict_title": "🏆 Issac 级终极研判",
         "verdicts": ["避险 (C)","观望 (B)","建仓 (A)","重仓 (A+)"],
         "strategies": ["⚠️ 趋势极弱，等候信号。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，逢低买入。","🔥 极品资产，量价齐飞，建议持股！"],
-        "strategy_label": "💡 策略指令"
+        "strategy_label": "💡 策略指令",
+        "score_label": "⭐ Issac 投研综合评分 (0-100): "
     },
     "EN": {
         "title": "🍎 Issac Investment Research Terminal",
@@ -81,6 +82,7 @@ LANG = {
         "verdict_title": "🏆 Issac Level Verdict",
         "verdicts": ["Wait (C)", "Hold (B)", "Accumulate (A)", "STRONG CONVICTION (A+)"],
         "strategies": ["Wait for signals.", "Monitor only.", "Accumulate on dips.", "Strong conviction hold."],
-        "strategy_label": "💡 Strategy"
+        "strategy_label": "💡 Strategy",
+        "score_label": "⭐ Issac Composite Score (0-100): "
     }
 }
