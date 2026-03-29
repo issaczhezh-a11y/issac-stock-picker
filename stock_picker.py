@@ -5,7 +5,7 @@ import time
 from datetime import datetime
 import pytz
 
-# --- 1. 深度多语言字典 ---
+# --- 1. 投行级多语言字典 ---
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -20,21 +20,14 @@ LANG = {
         "match_only": "🔍 只看符合条件的股票",
         "snapshot_title": "📊 核心参数快照",
         "report_title": "深度投研报告",
-        "moat_title": "🏰 商业模式与护城河",
-        "industry": "行业",
-        "summary": "业务简介",
-        "moat_high": "🔥 **核心竞争力：** 极高 ROE 显示其拥有极强的市场垄断力或技术壁垒。",
-        "moat_mid": "✅ **竞争优势：** 盈利能力稳健，具备一定的不可替代性。",
-        "moat_low": "⚠️ **提醒：** 护城河尚浅，需关注竞争对手动态。",
-        "fin_title": "🏛️ 核心财务评估",
-        "risk_title": "🚩 风险与趋势",
-        "short_warn": "⚠️ **空头警示**：做空率 {sh:.1f}%，抛压大。",
-        "short_ok": "✅ **筹码稳固**：做空率低。",
-        "trend_warn": "❌ **趋势信号**：价格在均线下方。",
-        "trend_ok": "📈 **多头信号**：股价稳立于均线上方。",
-        "verdict_title": "🏆 终极评级",
-        "strategy_label": "💡 操盘建议",
-        "strategies": ["建议等待放量信号。", "适合底仓观察。", "建议分批布局。", "建议果断加仓！"]
+        "moat_title": "🏰 商业模式与护城河深度透视",
+        "industry": "细分行业",
+        "summary": "核心业务概选",
+        "fin_title": "🏛️ 核心财务与护城河评估",
+        "risk_title": "🚩 风险、筹码与趋势雷达",
+        "verdict_title": "🏆 JPMorgan 级终极研判",
+        "strategy_label": "💡 机构级操盘策略",
+        "strategies": ["⚠️ 趋势极弱，建议场外等候放量信号。", "⚖️ 基本面尚可但动能不足，仅适合极轻仓位观察。", "✅ 优质资产且趋势向好，建议逢低分批建仓。", "🔥 极品资产，量价齐飞，建议作为核心仓位持有！"]
     },
     "EN": {
         "title": "🍎 Issac Investment Research Terminal",
@@ -49,47 +42,35 @@ LANG = {
         "match_only": "🔍 Show Matches Only",
         "snapshot_title": "📊 Core Metrics Snapshot",
         "report_title": "Deep Research Report",
-        "moat_title": "🏰 Business Model & Moat",
+        "moat_title": "🏰 Business Model & Moat Insight",
         "industry": "Industry",
         "summary": "Business Summary",
-        "moat_high": "🔥 **Core Competency:** High ROE indicates strong market dominance or technical barriers.",
-        "moat_mid": "✅ **Competitive Advantage:** Robust profitability with significant switching costs.",
-        "moat_low": "⚠️ **Notice:** Narrow moat; keep an eye on competitors.",
-        "fin_title": "🏛️ Core Fundamental Assessment",
-        "risk_title": "🚩 Risk & Trend Radar",
-        "short_warn": "⚠️ **Short Warning**: Short interest at {sh:.1f}%. High pressure.",
-        "short_ok": "✅ **Stable Sentiment**: Low short interest.",
-        "trend_warn": "❌ **Bearish**: Price is below MA200.",
-        "trend_ok": "📈 **Bullish**: Price supported by MA200.",
-        "verdict_title": "🏆 Final Verdict",
-        "strategy_label": "💡 Strategy",
-        "strategies": ["Wait for volume signals.", "Monitor closely.", "Accumulate on dips.", "Strong conviction, add position!"]
+        "fin_title": "🏛️ Fundamentals & Moat Assessment",
+        "risk_title": "🚩 Risk, Sentiment & Trend Radar",
+        "verdict_title": "🏆 Institutional Verdict",
+        "strategy_label": "💡 Trading Strategy",
+        "strategies": ["Wait for bottom signals.", "Monitor with small position.", "Accumulate on dips.", "Strong conviction, high conviction hold."]
     }
 }
 
 st.set_page_config(page_title="Issac Terminal", layout="wide")
-
-# 初始化状态
-if 'show_batch' not in st.session_state: st.session_state.show_batch = False
-
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG[lang_choice]
 st.title(t["title"])
 
-# --- 2. 侧边栏 ---
+# --- 2. 侧边栏设置 ---
 st.sidebar.header(t["sidebar_header"])
-search_ticker = st.sidebar.text_input(t["search_label"], key="search_box").upper().strip()
-
+search_ticker = st.sidebar.text_input(t["search_label"], "").upper().strip()
 st.sidebar.divider()
 target_pe = st.sidebar.number_input(t["pe_label"], value=25.0)
 target_peg = st.sidebar.number_input(t["peg_label"], value=1.2)
 min_roe = st.sidebar.number_input(t["roe_label"], value=15.0)
 min_fcf = st.sidebar.number_input(t["fcf_label"], value=0.5)
-
 st.sidebar.divider()
 idx_mode = st.sidebar.selectbox(t["scan_range"], ["S&P 500", "Nasdaq 100"])
+scan_btn = st.sidebar.button(t["scan_btn"])
 
-# --- 3. 分析函数 ---
+# --- 3. 分析引擎 ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
@@ -98,49 +79,65 @@ def get_analysis(s):
         inf = tk.info
         p, m200 = h['Close'].iloc[-1], h['Close'].rolling(200).mean().iloc[-1]
         v_r = ((h['Volume'].iloc[-1] / h['Volume'].iloc[-8:-1].mean()) - 1) * 100
-        pe = inf.get('forwardPE', 0)
-        peg = inf.get('pegRatio') or inf.get('trailingPegRatio') or 0
-        roe = (inf.get('returnOnEquity') or 0) * 100
-        fcf = (inf.get('freeCashflow') or 0) / 1e9
-        debt, sh = (inf.get('debtToEquity') or 0), (inf.get('shortPercentOfFloat') or 0) * 100
-        sum_raw, ind_raw = inf.get('longBusinessSummary', "N/A"), inf.get('industry', "N/A")
-
+        pe, peg = inf.get('forwardPE', 0), (inf.get('pegRatio') or inf.get('trailingPegRatio') or 0)
+        roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
+        debt, sh = (inf.get('debtToEquity') or 0), (inf.get('shortPercentOfFloat') or 0)*100
+        
         ok = (0 < pe < target_pe and 0 <= peg < target_peg and roe > min_roe and fcf > min_fcf)
-        return {"Symbol":s, "Price":round(p,2), "MA200":round(m200,2), "P/E":pe, "PEG":peg, "ROE%":round(roe,1), "FCF$B":round(fcf,1), "D/E":round(debt,1), "Short%":f"{sh:.1f}%", "Vol%":f"{v_r:+.1f}%", "Match":"✅" if ok else "❌", "_p":p, "_m":m200, "_sh":sh, "_v":v_r, "_summary":sum_raw, "_industry":ind_raw}
+        return {"Symbol":s, "Price":round(p,2), "MA200":round(m200,2), "P/E":pe, "PEG":peg, "ROE%":round(roe,1), "FCF$B":round(fcf,1), "D/E":round(debt,1), "Short%":f"{sh:.1f}%", "Vol%":f"{v_r:+.1f}%", "Match":"✅" if ok else "❌", "_p":p, "_m":m200, "_sh":sh, "_v":v_r, "_summary":inf.get('longBusinessSummary', "N/A"), "_industry":inf.get('industry', "N/A")}
     except: return None
 
-def show_deep_report(s):
+def render_report(s):
     st.subheader(f"{t['snapshot_title']} - {s['Symbol']}")
-    clean_display = {k: v for k, v in s.items() if not k.startswith('_')}
-    st.dataframe(pd.DataFrame([clean_display]), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame([{k: v for k, v in s.items() if not k.startswith('_')}]), use_container_width=True, hide_index=True)
+    
     with st.expander(f"📑 {s['Symbol']} - {t['report_title']}", expanded=True):
         st.markdown(f"### {t['moat_title']}")
         st.write(f"**{t['industry']}:** `{s['_industry']}`")
-        st.write(f"**{t['summary']}:** {s['_summary'][:800]}...")
-        st.info(t['moat_high'] if s['ROE%'] > 30 else (t['moat_mid'] if s['ROE%'] > 15 else t['moat_low']))
+        st.write(f"**{t['summary']}:** {s['_summary'][:1000]}...")
+        
+        # 护城河定性分析
+        if s['ROE%'] > 40: moat_eval = "💎 **护城河评级：顶级资产 (Elite Moat)**。极高的资本回报率意味着其拥有近乎垄断的技术门槛或行业地位，对手几乎无法逾越。"
+        elif s['ROE%'] > 20: moat_eval = "🛡️ **护城河评级：宽阔 (Wide Moat)**。拥有显著的竞争优势，能够持续产生超额利润。"
+        else: moat_eval = "🚧 **护城河评级：窄 (Narrow Moat)**。虽有盈利能力，但行业竞争激烈，需警惕护城河被侵蚀。"
+        st.info(moat_eval)
+
         st.markdown("---")
         st.markdown(f"### {t['fin_title']}")
         c1, c2, c3 = st.columns(3)
-        c1.metric("PEG", s['PEG'], delta="Value" if s['PEG'] < 0.8 else None)
-        c2.metric("ROE", f"{s['ROE%']}%", delta="High" if s['ROE%'] > 25 else None)
-        c3.metric("FCF", f"${s['FCF$B']}B")
+        c1.metric("PEG (性价比)", s['PEG'], delta="极佳" if s['PEG'] < 0.7 else None)
+        c2.metric("ROE (赚钱效率)", f"{s['ROE%']}%", delta="强劲" if s['ROE%'] > 25 else None)
+        c3.metric("FCF (现金余力)", f"${s['FCF$B']}B")
+        
+        # 财务健康度点评
+        debt_status = "🟢 资产负债极其健康" if s['D/E'] < 50 else ("🟡 杠杆适中" if s['D/E'] < 100 else "🔴 财务压力较大")
+        st.write(f"· **杠杆评估**: 负债权益比 `{s['D/E']}%` — {debt_status}")
+        st.write(f"· **现金含金量**: 自由现金流 ${s['FCF$B']}B，足以为未来的技术投入和回购提供‘弹药’。")
+
         st.markdown("---")
         st.markdown(f"### {t['risk_title']}")
         r1, r2 = st.columns(2)
         with r1:
-            if s['_sh'] > 5: st.error(t['short_warn'].format(sh=s['_sh']))
-            else: st.success(t['short_ok'])
+            if s['_sh'] > 5: st.error(f"⚠️ **空头警示**：做空率达 {s['_sh']:.1f}%，机构卖压正在集结。")
+            else: st.success(f"✅ **筹码稳健**：空头比例极低 ({s['_sh']:.1f}%)，市场信心足。")
         with r2:
-            if s['_p'] < s['_m']: st.error(t['trend_warn'])
-            else: st.success(t['trend_ok'])
+            if s['_p'] < s['_m']: st.error("❌ **弱势趋势**：当前股价低于 MA200 牛熊分界线。")
+            else: st.success("📈 **强势趋势**：股价站稳 200 日线上方，多头占优。")
+
         st.divider()
         score = (1 if s['PEG'] < 0.7 else 0) + (1 if s['ROE%'] > 25 else 0) + (1 if s['_p'] > s['_m'] else 0)
         st.success(f"### {t['verdict_title']}: {['Wait (C)','Hold (B)','Buy (A)','STRONG BUY (A+)'][score]}")
         st.info(f"{t['strategy_label']}: {t['strategies'][score]}")
 
-# --- 4. 逻辑控制 ---
-if st.sidebar.button(t["scan_btn"]):
-    st.session_state.show_batch = True
+# --- 4. 逻辑流控制 ---
+# 容器 1: 搜索区域
+if search_ticker:
+    res = get_analysis(search_ticker)
+    if res: render_report(res)
+    else: st.error("未找到代码。")
+
+# 容器 2: 批量扫描区域 (无论搜不搜个股，这里始终可用)
+if scan_btn:
     import urllib.request
     url = 'https://en.wikipedia.org/wiki/List_of_S%26P_500_companies' if idx_mode=="S&P 500" else 'https://en.wikipedia.org/wiki/Nasdaq-100'
     req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
@@ -154,19 +151,13 @@ if st.sidebar.button(t["scan_btn"]):
         bar.progress((i+1)/len(tks))
     st.session_state.batch_res = batch_res
 
-# 展示逻辑：如果用户在输入框打字，则强制展示个股并“隐藏”批量研报（但保留表格）
-if search_ticker:
-    st.divider()
-    res = get_analysis(search_ticker)
-    if res: show_deep_report(res)
-    else: st.error("Ticker not found.")
-elif st.session_state.show_batch and 'batch_res' in st.session_state:
+if 'batch_res' in st.session_state:
     st.divider()
     df = pd.DataFrame(st.session_state.batch_res)
     m_df = df[df["Match"].str.contains("✅")]
     if not m_df.empty:
-        st.subheader("🏙️ Batch Scan Intelligence")
-        sel = st.selectbox("Select Target Stock:", m_df["Symbol"].tolist())
+        st.subheader("🏙️ 批量扫描：智库级深度透视")
+        sel = st.selectbox("选择要查看的批量扫描标的:", m_df["Symbol"].tolist())
         s_target = df[df["Symbol"] == sel].iloc[0]
-        show_deep_report(s_target)
+        render_report(s_target)
     st.dataframe(m_df if st.checkbox(t["match_only"], value=True) else df, use_container_width=True, hide_index=True)
