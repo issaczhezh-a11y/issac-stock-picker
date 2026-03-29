@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 from lang_config import LANG 
 
-# --- 1. 初始化 ---
+# --- 1. 设置 ---
 st.set_page_config(page_title="Issac Terminal Pro", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG.get(lang_choice, LANG["CN"])
@@ -89,7 +89,6 @@ def get_analysis(s):
                 prev_roe = round((y_fin.loc['Net Income'].iloc[idx] / tk.balance_sheet.loc['Stockholders Equity'].iloc[idx]) * 100, 1)
         except: pass
 
-        # RS
         h_3m = tk.history(period="3mo")
         s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
         spy_ret = ((yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[-1] / yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[0]) - 1) * 100
@@ -111,10 +110,10 @@ def render_report(s):
     # --- 1. 宏观雷达 ---
     macro = get_macro_radar()
     if macro:
-        st.markdown(f"### {t.get('macro_title', 'Macro')}")
+        st.markdown(f"### {t.get('macro_title', 'Macro Radar')}")
         m1, m2, m3, m4 = st.columns([1, 1, 1, 1])
         m1.metric(t.get("vix_label", "VIX"), macro['vix'], help=t.get("vix_help", ""))
-        m2.metric(t.get("tnx_label", "10Y"), f"{macro['tnx']}%", help=t.get("tnx_help", ""))
+        m2.metric(t.get("tnx_label", "10Y Yield"), f"{macro['tnx']}%", help=t.get("tnx_help", ""))
         m3.metric("Issac Macro Score", f"{macro['score']}/100")
         m4.subheader(t.get(macro['mood'], ""))
         with st.expander(t.get('macro_explainer_title', 'Logic').format(mood=t.get(macro['mood'], ""))):
@@ -148,36 +147,35 @@ def render_report(s):
         fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
         st.plotly_chart(fig_rs, use_container_width=True) # 🎯 移除这里的 help 参数
 
-    # --- 4. 财报雷达 ---
-    st.markdown(f"### {t.get('earnings_radar_title', 'Earnings')}")
+    # --- 4. 财报雷达 (去除非法的 help 参数) ---
+    st.markdown(f"### {t.get('earnings_radar_title', 'Earnings Radar')}")
     er1, er2 = st.columns(2)
     er1.info(f"📅 **下个财报日**: `{s['_n_e']}` (约 {s['_n_d']} 天后)")
     with er2:
         sur_c = "green" if (isinstance(s['_p_s'], (int, float)) and s['_p_s'] > 0) else "red"
-        # 🎯 移除 st.write 里的 help 参数，改用 f-string 彻底避坑
         st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
-        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]")
+        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]") # 🎯 移除了 help
 
-    # --- 5. 研报内容 ---
+    # --- 5. 研报内容 (去除非法的 help 参数) ---
     st.markdown(f"# {t.get('report_title', 'Report')}")
-    with st.expander(t.get('moat_title', 'Moat'), expanded=True):
+    with st.expander(t.get('moat_title', 'Moat Insight'), expanded=True):
         m_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
         st.info(f"**{t.get('industry', 'Industry')}**: `{s['_ind']}` | {m_txt}")
-        st.write(s['_sum'][:1200] + "...")
-    with st.expander(t.get('fin_title', 'Finance'), expanded=True):
+        st.write(s['_sum'][:1200])
+    with st.expander(t.get('fin_title', 'Financials'), expanded=True):
         f1, f2, f3 = st.columns(3)
-        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("fcf_help", ""))
-        f2.metric("Indebtedness", f"${s['_debt']:.1f}B", help=t.get("debt_help", ""))
-        f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%")
-        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)")
+        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("cash_help", "")) # Metric 支持 help
+        f2.metric("Total Debt", f"${s['_debt']:.1f}B", help=t.get("debt_help", ""))
+        f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%", help=t.get("fcf_margin_help", ""))
+        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)") # 移除了 help
         d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
         st.write(f"杠杆审计: 负债比 **{s['Debt%']}%** — {d_st}")
-    with st.expander(t.get('risk_title', 'Risk'), expanded=True):
+    with st.expander(t.get('risk_title', 'Risk Radar'), expanded=True):
         r1, r2 = st.columns(2)
-        r1.success(f"✅ 机构持仓: **{s['_inst']:.1f}%**", help=t.get("inst_help", ""))
+        r1.success(f"✅ 机构持仓: **{s['_inst']:.1f}%**") # 移除了 help
         if s['Price'] < s['MA200']: r2.error(t.get('trend_bear', 'Bearish'))
         else: r2.success(t.get('trend_bull', 'Bullish'))
-        st.warning(f"🛡️ **离场参考位**: `${round(s['_m']*0.97, 2)}` (MA200 -3%)")
+        st.warning(f"🛡️ **建议止损位**: `${round(s['_m']*0.97, 2)}` (MA200 -3%)")
     
     st.divider()
     v_idx = 1 if s['Price'] < s['MA200']*0.97 or (macro and macro['status'] == "CRASH") else (3 if score > 75 else (2 if score > 50 else 1))
@@ -188,7 +186,7 @@ def render_report(s):
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
-    else: st.error("Ticker not found or Data API error.")
+    else: st.error("Ticker not found. Try MSFT to verify.")
 
 if scan_btn:
     import urllib.request
