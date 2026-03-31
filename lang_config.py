@@ -1,4 +1,4 @@
-# lang_config.py - Issac Terminal 最终防弹词库 (v51.0)
+# lang_config.py - Issac Terminal 智库 (v52.0 终极修复版)
 LANG = {
     "CN": {
         "title": "🍎 Issac 机构级投研研究终端",
@@ -31,14 +31,15 @@ LANG = {
         "moat_wide": "🛡️ **评级：宽阔 (Wide)**。拥有成熟壁垒，盈利质量高。",
         "moat_narrow": "🚧 **评级：较窄 (Narrow)**。面临激烈竞争，需警惕利润。",
         "fin_title": "🏛️ 维度二：盈利质量、现金与债务审计",
-        "cash_help": "Total Cash: 账面总现金。高现金储备意味着强大的抗风险能力。",
-        "debt_help": "Total Debt: 负债总额。衡量财务健康程度的核心指标。",
+        "cash_help": "账面总现金。高现金储备意味着强大的抗风险能力。",
+        "debt_help": "负债总额。衡量财务健康程度的核心指标。",
         "fcf_margin_help": "FCF Margin: 自由现金流利润率。> 15% 是真正的‘印钞机’。",
         "consistency_label": "· **ROE 稳定性审计**: **{curr}%** (TTM) vs **{prev}%** (上年)。",
         "cash_label": "· **现金储备**: **${val}B** (Total Cash)。",
         "debt_val_label": "· **债务总额**: **${val}B** (Total Debt)。",
         "debt_audit": "· **杠杆审计**: 负债权益比 **{val}%** — {status}",
         "pe_percentile_label": "· **估值水位**: 当前 P/E 处于过去一年 **{val}%** 分位。",
+        "upside_desc": "· **上涨空间**: 分析师预期均价 **${target}**，潜力 **{upside}**。",
         "debt_healthy": "财务极其稳健", "debt_mid": "杠杆适中", "debt_high": "风险偏高",
         "risk_title": "🚩 维度四：筹码博弈、趋势与风险预警",
         "inst_help": "机构持仓比：大资金的‘态度’。> 70% 代表机构高度认可。",
@@ -51,20 +52,20 @@ LANG = {
         "strategies": ["⚠️ 趋势极弱，等候信号。","⚖️ 缺乏动能，仅适合极轻仓。","✅ 趋势向好，逢低买入。","🔥 极品资产，量价齐飞，建议持股！"],
         "strategy_label": "💡 策略指令",
         "score_label": "⭐ Issac 投研综合评分",
-        "score_help": "量化评分系统。> 75 分代表当前是高概率赢面的介入点。",
+        "score_help": "基于基本面、技术面、大盘环境的量化评分。",
         "macro_title": "🌐 全球宏观风控雷达",
         "vix_label": "📉 恐慌指数 (VIX)",
         "vix_help": "衡量全市场恐慌程度。> 28 意味着极度恐慌。",
         "tnx_label": "🏛️ 10年美债收益率",
-        "tnx_help": "全球资产定价之锚。它飙升会压制科技股估值。",
+        "tnx_help": "全球资产定价之锚。上升会压制科技股估值。",
         "mood_greed": "🟢 贪婪/平稳", "mood_fear": "🟡 谨慎/震荡", "mood_panic": "🔴 极度恐慌",
         "macro_alert": "🚨 **系统性风险警示**：当前大环境恶劣，建议暂时清仓回避！",
         "macro_explainer_title": "🧐 为什么当前处于：{mood}？",
-        "macro_logic_panic": "🆘 **逻辑判断**：VIX 飙升且大盘跌破均线。全市场正在无差别抛售。",
+        "macro_logic_panic": "🆘 **逻辑判断**：VIX 飙升且大盘跌破均线。全市场在踩踏抛售。",
         "macro_logic_fear": "⚠️ **逻辑判断**：VIX 处于 22-28 区间。波动加大，资金外流避险。",
         "macro_logic_greed": "✅ **逻辑判断**：VIX 低于 20 且大盘稳步上行。目前处于多头占优环境。",
         "macro_val_desc": "💡 **分值含义**：分值越低代表市场越恐慌。0-25 是‘至暗时刻’，75 以上是‘狂欢终点’。",
-        "macro_hist_desc": "📜 **历史复盘**：极度恐慌（<25）往往对应中长期底部。"
+        "macro_hist_desc": "📜 **历史复盘**：极度恐慌通常对应中长期底部。"
     },
     "EN": {
         "title": "🍎 Issac Investment Terminal",
