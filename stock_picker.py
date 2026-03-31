@@ -6,7 +6,7 @@ import plotly.graph_objects as go
 from datetime import datetime, timezone
 from lang_config import LANG 
 
-# --- 1. 设置 ---
+# --- 1. 初始化 ---
 st.set_page_config(page_title="Issac Terminal Pro", layout="wide")
 lang_choice = st.sidebar.radio("🌐 Language / 语言", ["CN", "EN"], horizontal=True)
 t = LANG.get(lang_choice, LANG["CN"])
@@ -47,15 +47,21 @@ def get_macro_radar():
         return {"vix": round(vix, 2), "tnx": round(tnx, 2), "mood": mood, "status": status, "score": m_score, "logic": logic_key}
     except: return None
 
-# --- 4. 分析引擎 ---
+# --- 4. 分析引擎 (暴力容错版) ---
 def get_analysis(s):
     try:
         tk = yf.Ticker(s)
-        h = tk.history(period="1y")
-        if h.empty or len(h) < 200: return None
         inf = tk.info
+        if not inf or 'symbol' not in inf: return None
+        
+        # 🎯 修复 LITE 搜不到：降低历史数据准入门槛
+        h = tk.history(period="1y")
+        if h.empty: return None
+        
         p = h['Close'].iloc[-1]
-        m200_val = h['Close'].rolling(200).mean().iloc[-1]
+        # 如果历史不够200天，MA200就取平均，不直接返回None
+        m200_s = h['Close'].rolling(200).mean()
+        m200_val = m200_s.iloc[-1] if not m200_s.isna().all() else p
         
         peg = inf.get('pegRatio') or inf.get('trailingPegRatio', 0)
         roe, fcf = (inf.get('returnOnEquity') or 0)*100, (inf.get('freeCashflow') or 0)/1e9
@@ -63,13 +69,17 @@ def get_analysis(s):
         cash, debt = (inf.get('totalCash') or 0)/1e9, (inf.get('totalDebt') or 0)/1e9
         pe_curr = inf.get('forwardPE') or inf.get('trailingPE', 0)
         
-        # 财报抓取
+        # 🎯 财报日期：增加 Info 时间戳解析 (最暴力最稳的方法)
         n_date, n_days, p_date, p_act, p_est, p_surp = "N/A", 999, "N/A", "N/A", "N/A", "0.0"
         try:
-            cal = tk.calendar
-            if isinstance(cal, pd.DataFrame) and 'Earnings Date' in cal.index:
-                c_dt = cal.loc['Earnings Date'].iloc[0]
-                n_date, n_days = c_dt.strftime('%Y-%m-%d'), (pd.to_datetime(c_dt).replace(tzinfo=None) - datetime.now()).days
+            # 路径 1: 直接解析 info 里的时间戳
+            raw_ts = inf.get('nextEarningsDate')
+            if raw_ts:
+                dt_obj = datetime.fromtimestamp(raw_ts, tz=timezone.utc)
+                n_date = dt_obj.strftime('%Y-%m-%d')
+                n_days = (dt_obj - datetime.now(timezone.utc)).days
+            
+            # 路径 2: 财报历史作为补充
             e_dates = tk.get_earnings_dates(limit=8)
             if e_dates is not None and not e_dates.empty:
                 e_dates.index = pd.to_datetime(e_dates.index).tz_convert('UTC')
@@ -89,17 +99,18 @@ def get_analysis(s):
                 prev_roe = round((y_fin.loc['Net Income'].iloc[idx] / tk.balance_sheet.loc['Stockholders Equity'].iloc[idx]) * 100, 1)
         except: pass
 
+        # RS
         h_3m = tk.history(period="3mo")
-        s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100
+        s_ret = ((h_3m['Close'].iloc[-1] / h_3m['Close'].iloc[0]) - 1) * 100 if len(h_3m)>0 else 0
         spy_ret = ((yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[-1] / yf.Ticker("^GSPC").history(period="3mo")['Close'].iloc[0]) - 1) * 100
 
-        ok = (0 < inf.get('forwardPE', 0) < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
+        ok = (0 < pe_curr < t_pe and 0 < peg < t_peg and roe > m_roe and fcf > m_fcf)
         return {
             "Symbol": s, "Price": round(p, 2), "MA200": round(m200_val, 2), "Match": "✅" if ok else "❌",
             "P/E": pe_curr, "PEG": round(peg, 4), "ROE%": round(roe, 1), "Inst%": f"{inst:.1f}%",
             "FCF$B": round(fcf, 1), "Debt%": round(inf.get('debtToEquity', 0), 1), "Upside": f"{((inf.get('targetMeanPrice', p)/p)-1)*100:+.1f}%",
-            "_p": p, "_m": m200_val, "_h": h, "_m_s": h['Close'].rolling(200).mean(), "_target": inf.get('targetMeanPrice'),
-            "_inst": inst, "_cash": cash, "_debt": debt, "_pe_pct": 50, "_s_ret": s_ret, "_spy_ret": spy_ret,
+            "_p": p, "_m": m200_val, "_h": h, "_m_s": m200_s, "_target": inf.get('targetMeanPrice'),
+            "_inst": inst, "_cash": cash, "_debt": debt, "_s_ret": s_ret, "_spy_ret": spy_ret,
             "_n_e": n_date, "_n_d": n_days, "_p_e": p_date, "_p_act": p_act, "_p_est": p_est, "_p_s": p_surp,
             "_prev_roe": prev_roe, "_fcf_m": ((inf.get('freeCashflow', 0) / inf.get('totalRevenue', 1)) * 100),
             "_ind": inf.get('industry', "N/A"), "_sum": inf.get('longBusinessSummary', "N/A")
@@ -107,20 +118,18 @@ def get_analysis(s):
     except: return None
 
 def render_report(s):
-    # --- 1. 宏观雷达 ---
     macro = get_macro_radar()
     if macro:
         st.markdown(f"### {t.get('macro_title', 'Macro Radar')}")
         m1, m2, m3, m4 = st.columns([1, 1, 1, 1])
         m1.metric(t.get("vix_label", "VIX"), macro['vix'], help=t.get("vix_help", ""))
-        m2.metric(t.get("tnx_label", "10Y Yield"), f"{macro['tnx']}%", help=t.get("tnx_help", ""))
+        m2.metric(t.get("tnx_label", "10Y"), f"{macro['tnx']}%", help=t.get("tnx_help", ""))
         m3.metric("Issac Macro Score", f"{macro['score']}/100")
         m4.subheader(t.get(macro['mood'], ""))
         with st.expander(t.get('macro_explainer_title', 'Logic').format(mood=t.get(macro['mood'], ""))):
             st.write(t.get(macro['logic'], ""))
             st.info(t.get('macro_val_desc', ""))
 
-    # --- 2. 评分与快照 ---
     score = 0
     score += 25 if s['Price'] > s['MA200'] else 0
     score += 25 if s['ROE%'] > 25 else (15 if s['ROE%'] > 15 else 0)
@@ -134,7 +143,6 @@ def render_report(s):
     c_right.metric(t.get('score_label', 'Score'), f"{score}/100", delta=f"{score-50}", help=t.get("score_help", ""))
     st.dataframe(pd.DataFrame([s])[WHITE_LIST], use_container_width=True, hide_index=True)
     
-    # --- 3. 趋势图 ---
     c1, c2 = st.columns([2, 1])
     with c1:
         fig = go.Figure()
@@ -145,18 +153,16 @@ def render_report(s):
     with c2:
         fig_rs = go.Figure(go.Bar(x=[s['Symbol'], "SPY"], y=[s['_s_ret'], s['_spy_ret']], marker_color=['#00d1ff', '#444444']))
         fig_rs.update_layout(template="plotly_dark", height=300, margin=dict(l=0, r=0, t=10, b=0))
-        st.plotly_chart(fig_rs, use_container_width=True) # 🎯 移除这里的 help 参数
+        st.plotly_chart(fig_rs, use_container_width=True)
 
-    # --- 4. 财报雷达 (去除非法的 help 参数) ---
     st.markdown(f"### {t.get('earnings_radar_title', 'Earnings Radar')}")
     er1, er2 = st.columns(2)
     er1.info(f"📅 **下个财报日**: `{s['_n_e']}` (约 {s['_n_d']} 天后)")
     with er2:
         sur_c = "green" if (isinstance(s['_p_s'], (int, float)) and s['_p_s'] > 0) else "red"
         st.markdown(f"**{t.get('prev_earn_label', 'Last').format(date=s['_p_e'])}**")
-        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]") # 🎯 移除了 help
+        st.write(f"EPS 实测: `{s['_p_act']}` vs 预期: `{s['_p_est']}` ➔ 惊喜度: :{sur_c}[{s['_p_s']}%]")
 
-    # --- 5. 研报内容 (去除非法的 help 参数) ---
     st.markdown(f"# {t.get('report_title', 'Report')}")
     with st.expander(t.get('moat_title', 'Moat Insight'), expanded=True):
         m_txt = t.get('moat_elite') if s['ROE%'] > 35 else (t.get('moat_wide') if s['ROE%'] > 18 else t.get('moat_narrow'))
@@ -164,15 +170,15 @@ def render_report(s):
         st.write(s['_sum'][:1200])
     with st.expander(t.get('fin_title', 'Financials'), expanded=True):
         f1, f2, f3 = st.columns(3)
-        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("cash_help", "")) # Metric 支持 help
+        f1.metric("Cash (Total)", f"${s['_cash']:.1f}B", help=t.get("cash_help", ""))
         f2.metric("Total Debt", f"${s['_debt']:.1f}B", help=t.get("debt_help", ""))
         f3.metric("FCF Margin", f"{s['_fcf_m']:.1f}%", help=t.get("fcf_margin_help", ""))
-        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)") # 移除了 help
+        st.write(f"ROE 稳定性: **{s['ROE%']}%** (当前) vs **{s['_prev_roe']}%** (上年)")
         d_st = t.get('debt_healthy') if s['Debt%'] < 40 else (t.get('debt_mid') if s['Debt%'] < 100 else t.get('debt_high'))
         st.write(f"杠杆审计: 负债比 **{s['Debt%']}%** — {d_st}")
     with st.expander(t.get('risk_title', 'Risk Radar'), expanded=True):
         r1, r2 = st.columns(2)
-        r1.success(f"✅ 机构持仓: **{s['_inst']:.1f}%**") # 移除了 help
+        r1.success(f"✅ 机构持仓: **{s['_inst']:.1f}%**")
         if s['Price'] < s['MA200']: r2.error(t.get('trend_bear', 'Bearish'))
         else: r2.success(t.get('trend_bull', 'Bullish'))
         st.warning(f"🛡️ **建议止损位**: `${round(s['_m']*0.97, 2)}` (MA200 -3%)")
@@ -186,7 +192,7 @@ def render_report(s):
 if search_ticker:
     res = get_analysis(search_ticker)
     if res: render_report(res)
-    else: st.error("Ticker not found. Try MSFT to verify.")
+    else: st.error("Ticker not found or Data API throttled. Please try MSFT/AAPL to verify connectivity.")
 
 if scan_btn:
     import urllib.request
